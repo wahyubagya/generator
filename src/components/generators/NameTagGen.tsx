@@ -1,0 +1,385 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { GeneratorShell, IconImage, IconText, ModeSwitch, SaveIcon } from "@/components/GeneratorShell";
+import { BulkNames, DesignChips } from "@/components/BulkNames";
+import { LegendMesh, ReliefMesh, useLine } from "@/components/models";
+import { ColorSelect, Field, FontPicker, FontPreviewLoader, PriceBox, Segmented, Slider, TextInput, UploadBox } from "@/components/ui";
+import { Viewport } from "@/components/Viewport";
+import { DEFAULT_FONT } from "@/lib/fonts";
+import { annulusShape, extrudeFlat, mergeGeos, outerOnly, roundedRectShape, type Line } from "@/lib/geometry";
+import { saveDraft, useDesigns, useFont, useReliefSource, useToast } from "@/lib/hooks";
+import { buildRelief } from "@/lib/imageRelief";
+import { lowContrast } from "@/lib/palette";
+import { estimateByVolume, formatRp } from "@/lib/pricing";
+
+type Design = {
+  mode: "text" | "image";
+  text: string;
+  fontId: string;
+  imageUrl?: string;
+  imgWidth: number;
+  imgColors: number;
+  imgOverrides: Record<number, string>;
+  shape: "outline" | "kotak" | "kapsul";
+  outline: number;
+  ring: "kiri" | "kanan" | "atas" | "tanpa";
+  baseThick: number;
+  reliefH: number;
+  baseColor: string;
+  textColor: string;
+};
+
+const INITIAL: Design = {
+  mode: "text",
+  text: "NAMA",
+  fontId: DEFAULT_FONT,
+  imgWidth: 50,
+  imgColors: 3,
+  imgOverrides: {},
+  shape: "outline",
+  outline: 2.2,
+  ring: "kiri",
+  baseThick: 2.4,
+  reliefH: 1.4,
+  baseColor: "#16181d",
+  textColor: "#f4f4f2",
+};
+
+const CAP = 14;
+const BT = 0.35;
+const RING_OUT = 4.4;
+const RING_IN = 1.9;
+
+function baseSize(d: Design, line: Line) {
+  const pad = d.shape === "outline" ? d.outline : d.outline + 1.5;
+  return { pad, w: line.w + 2 * pad, h: Math.max(line.h * (d.shape === "outline" ? 0.5 : 1) + 2 * pad, 0) };
+}
+
+function ringPos(d: Design, line: Line): [number, number] | null {
+  const { pad } = baseSize(d, line);
+  const rr = RING_OUT - 1.6;
+  if (d.ring === "kiri") return [-(line.w / 2 + pad) - rr, 0];
+  if (d.ring === "kanan") return [line.w / 2 + pad + rr, 0];
+  if (d.ring === "atas") return [-line.w / 2 + RING_OUT, -(line.h / 2 + pad) - rr];
+  return null;
+}
+
+function TextTag({ d, onVolume }: { d: Design; onVolume: (v: number) => void }) {
+  const font = useFont(d.fontId);
+  const line = useLine(font, d.text, CAP, 100);
+
+  const baseGeo = useMemo(() => {
+    if (!line) return null;
+    const { pad, w, h } = baseSize(d, line);
+    const geos: THREE.BufferGeometry[] = [];
+    if (d.shape === "outline") {
+      for (const p of line.parts) {
+        const g = extrudeFlat(outerOnly(p.shapes), d.baseThick, { bevel: BT, bevelSize: BT, offset: pad });
+        g.translate(p.x, 0, 0);
+        geos.push(g);
+      }
+      geos.push(
+        extrudeFlat([roundedRectShape(Math.max(1, line.w), Math.max(1, h - 2 * pad), 1.2)], d.baseThick, {
+          bevel: BT,
+          bevelSize: BT,
+          offset: pad,
+        }),
+      );
+    } else {
+      const r = d.shape === "kapsul" ? Math.min(w, h) / 2 : 3;
+      geos.push(extrudeFlat([roundedRectShape(w, h, r)], d.baseThick, { bevel: BT, bevelSize: BT }));
+    }
+    const rp = ringPos(d, line);
+    if (rp) {
+      const g = extrudeFlat([annulusShape(RING_OUT, RING_IN)], d.baseThick, { bevel: BT, bevelSize: BT });
+      g.translate(rp[0], 0, rp[1]);
+      geos.push(g);
+    }
+    return mergeGeos(geos);
+  }, [d, line]);
+
+  useEffect(() => () => baseGeo?.dispose(), [baseGeo]);
+
+  useEffect(() => {
+    if (!line) return;
+    const { pad, w, h } = baseSize(d, line);
+    const baseArea = d.shape === "outline" ? (line.w + 2 * pad) * (line.h * 0.5 + 2 * pad) + line.area * 0.6 : w * h;
+    const ring = d.ring === "tanpa" ? 0 : Math.PI * (RING_OUT ** 2 - RING_IN ** 2);
+    onVolume(baseArea * (d.baseThick + 2 * BT) + line.area * d.reliefH + ring * d.baseThick);
+  }, [line, d, onVolume]);
+
+  if (!baseGeo || !line) return null;
+  return (
+    <group>
+      <mesh geometry={baseGeo} castShadow receiveShadow>
+        <meshStandardMaterial color={d.baseColor} roughness={0.5} />
+      </mesh>
+      <group position={[0, d.baseThick + 2 * BT, 0]}>
+        <LegendMesh line={line} depth={d.reliefH} color={d.textColor} />
+      </group>
+    </group>
+  );
+}
+
+function ImageTag({ d, onVolume }: { d: Design; onVolume: (v: number) => void }) {
+  const { source } = useReliefSource(d.imageUrl, 120);
+  const cellEst = source ? d.imgWidth / source.w : 0.4;
+  const dil = Math.max(0, Math.round(d.outline / Math.max(0.15, cellEst)));
+  const relief = useMemo(
+    () =>
+      source
+        ? buildRelief(source, {
+            k: d.imgColors,
+            baseH: d.baseThick,
+            step: Math.max(0.3, d.reliefH * 0.5),
+            dilate: dil,
+            baseColor: d.baseColor,
+          })
+        : null,
+    [source, d.imgColors, d.baseThick, d.reliefH, dil, d.baseColor],
+  );
+  const cell = relief ? d.imgWidth / relief.cols : 0;
+  const colors = useMemo(() => {
+    if (!relief) return [];
+    const hasBase = dil > 0;
+    return relief.colors.map((c, i) =>
+      hasBase && i === relief.colors.length - 1 ? d.baseColor : (d.imgOverrides[i] ?? c),
+    );
+  }, [relief, dil, d.baseColor, d.imgOverrides]);
+
+  const ringGeo = useMemo(
+    () => (d.ring === "tanpa" ? null : extrudeFlat([annulusShape(RING_OUT, RING_IN)], d.baseThick, { bevel: BT, bevelSize: BT })),
+    [d.ring, d.baseThick],
+  );
+  useEffect(() => () => ringGeo?.dispose(), [ringGeo]);
+
+  useEffect(() => {
+    if (!relief) return;
+    onVolume(relief.cells.length * cell * cell * (d.baseThick + d.reliefH * 0.5));
+  }, [relief, cell, d.baseThick, d.reliefH, onVolume]);
+
+  if (!relief) return null;
+  const topZ = (relief.top.z - 0.5 - dil) * cell;
+  return (
+    <group>
+      <ReliefMesh relief={relief} cell={cell} colors={colors} />
+      {ringGeo && (
+        <mesh
+          geometry={ringGeo}
+          position={[relief.top.x * cell, 0, topZ - RING_OUT + 1.8]}
+          castShadow
+        >
+          <meshStandardMaterial color={d.baseColor} roughness={0.5} />
+        </mesh>
+      )}
+    </group>
+  );
+}
+
+type Tab = "desain" | "bentuk" | "warna" | "timbul";
+const TABS: { id: Tab; label: string }[] = [
+  { id: "desain", label: "Desain" },
+  { id: "bentuk", label: "Bentuk" },
+  { id: "warna", label: "Warna" },
+  { id: "timbul", label: "Timbul" },
+];
+
+export default function NameTagGen() {
+  const D = useDesigns<Design>(INITIAL, 8);
+  const d = D.current;
+  const [tab, setTab] = useState<Tab>("desain");
+  const [volume, setVolume] = useState(0);
+  const [priced, setPriced] = useState<{ key: string; price: number; grams: number } | null>(null);
+  const toast = useToast();
+  const { source } = useReliefSource(d.mode === "image" ? d.imageUrl : undefined, 120);
+  const palette = useMemo(
+    () => (source ? buildRelief(source, { k: d.imgColors, baseH: 1, step: 0 }).colors : []),
+    [source, d.imgColors],
+  );
+
+  const key = JSON.stringify({ ...d, imageUrl: d.imageUrl ? d.imageUrl.length : 0 });
+  const shownPrice = priced && priced.key === key ? priced : null;
+  const ringChoices = d.mode === "text"
+    ? [
+        { id: "kiri", label: "Kiri" },
+        { id: "atas", label: "Atas" },
+        { id: "kanan", label: "Kanan" },
+        { id: "tanpa", label: "Tanpa" },
+      ]
+    : [
+        { id: "atas", label: "Atas" },
+        { id: "tanpa", label: "Tanpa" },
+      ];
+  const ringValue = d.mode === "image" && d.ring !== "tanpa" ? "atas" : d.ring;
+
+  return (
+    <>
+      <FontPreviewLoader />
+      <GeneratorShell
+        title="Gantungan Nama & Logo"
+        subtitle="Buat dari nama atau gambar sendiri, lalu lihat hasil 3D sebelum pesan."
+        tabs={TABS}
+        tab={tab}
+        onTab={setTab}
+        toast={toast.msg}
+        top={
+          <>
+            <BulkNames
+              title="Gantungan nama untuk semua nama"
+              max={D.max}
+              count={D.items.length}
+              maxLen={16}
+              onAdd={(names) => D.addNames(names, (base, name) => ({ ...base, mode: "text", text: name }))}
+            />
+            <DesignChips
+              labels={D.items.map((i) => (i.mode === "image" ? "Gambar" : i.text))}
+              sel={D.sel}
+              onSel={D.setSel}
+              onRemove={D.remove}
+            />
+          </>
+        }
+        beforeGrid={
+          <ModeSwitch
+            value={d.mode}
+            onChange={(mode) => D.update({ mode, ring: mode === "image" && d.ring !== "tanpa" ? "atas" : d.ring })}
+            options={[
+              { id: "text", label: "Tulis Nama", icon: IconText },
+              { id: "image", label: "Upload Gambar", icon: IconImage },
+            ]}
+          />
+        }
+        stage={
+          <Viewport hint="Klik bagian untuk warna / relief · geser untuk putar" fitKey={`${d.mode}`}>
+            {d.mode === "text" ? <TextTag d={d} onVolume={setVolume} /> : <ImageTag d={d} onVolume={setVolume} />}
+          </Viewport>
+        }
+        panel={
+          <>
+            {tab === "desain" && d.mode === "text" && (
+              <>
+                <Field label="Nama yang dicetak" hint="Maksimal 16 karakter.">
+                  <TextInput value={d.text} max={16} id="input-nametag-text" onChange={(text) => D.update({ text })} />
+                </Field>
+                <Field label="Pilih gaya huruf">
+                  <FontPicker value={d.fontId} sample={d.text || "NAMA"} onChange={(fontId) => D.update({ fontId })} />
+                </Field>
+              </>
+            )}
+            {tab === "desain" && d.mode === "image" && (
+              <>
+                <Field label="Logo / gambar" hint="Latar polos dan kontras tinggi memberi hasil terbaik. Maks. 3 warna.">
+                  <UploadBox compact title={d.imageUrl ? "Ganti gambar" : "Upload gambar"} onData={(imageUrl) => D.update({ imageUrl, imgOverrides: {} })} />
+                </Field>
+                <Slider label="Lebar gambar" value={d.imgWidth} min={30} max={90} step={1} onChange={(imgWidth) => D.update({ imgWidth })} />
+                <Field label="Jumlah warna">
+                  <Segmented
+                    value={d.imgColors}
+                    onChange={(imgColors) => D.update({ imgColors, imgOverrides: {} })}
+                    options={[
+                      { id: 1, label: "1" },
+                      { id: 2, label: "2" },
+                      { id: 3, label: "3" },
+                    ]}
+                  />
+                </Field>
+              </>
+            )}
+            {tab === "bentuk" && (
+              <>
+                {d.mode === "text" && (
+                  <Field label="Bentuk alas">
+                    <Segmented
+                      value={d.shape}
+                      onChange={(shape) => D.update({ shape })}
+                      options={[
+                        { id: "outline", label: "Ikuti huruf" },
+                        { id: "kotak", label: "Kotak" },
+                        { id: "kapsul", label: "Kapsul" },
+                      ]}
+                    />
+                  </Field>
+                )}
+                <Slider label="Lebar tepi alas" value={d.outline} min={d.mode === "image" ? 0 : 1} max={5} step={0.2} onChange={(outline) => D.update({ outline })} />
+                <Field label="Posisi ring gantungan">
+                  <Segmented
+                    value={ringValue}
+                    onChange={(ring) => D.update({ ring: ring as Design["ring"] })}
+                    options={ringChoices}
+                  />
+                </Field>
+              </>
+            )}
+            {tab === "warna" && (
+              <>
+                <ColorSelect label="Warna alas" value={d.baseColor} onChange={(baseColor) => D.update({ baseColor })} />
+                {d.mode === "text" ? (
+                  <ColorSelect
+                    label="Warna tulisan"
+                    value={d.textColor}
+                    onChange={(textColor) => D.update({ textColor })}
+                    warn={lowContrast(d.baseColor, d.textColor) ? "Kontras rendah — pilih warna yang lebih berbeda." : undefined}
+                  />
+                ) : palette.length ? (
+                  palette.map((c, i) => (
+                    <ColorSelect
+                      key={i}
+                      label={`Warna gambar ${i + 1}`}
+                      value={d.imgOverrides[i] ?? c}
+                      onChange={(hex) => D.update({ imgOverrides: { ...d.imgOverrides, [i]: hex } })}
+                    />
+                  ))
+                ) : (
+                  <p className="hint">Upload gambar dulu di tab Desain.</p>
+                )}
+              </>
+            )}
+            {tab === "timbul" && (
+              <>
+                <Slider label={d.mode === "text" ? "Tinggi tulisan timbul" : "Tinggi lapisan gambar"} value={d.reliefH} min={0.6} max={3} step={0.2} onChange={(reliefH) => D.update({ reliefH })} />
+                <Slider label="Tebal alas" value={d.baseThick} min={1.6} max={5} step={0.2} onChange={(baseThick) => D.update({ baseThick })} />
+                <p className="hint">Tulisan lebih tinggi lebih mudah diraba, tetapi memakai filamen lebih banyak.</p>
+              </>
+            )}
+          </>
+        }
+        foot={
+          <>
+            <PriceBox
+              title="Harga cetak produk"
+              price={shownPrice ? shownPrice.price : null}
+              pending="Harga muncul setelah desain siap."
+              showMarketplace={false}
+              notes={[
+                "Harga yang tertera adalah harga cetak produk, bukan biaya desain.",
+                "Belum termasuk ongkir.",
+                shownPrice
+                  ? `Estimasi ±${shownPrice.grams.toFixed(1)} g filamen. Harga dihitung dari bahan dan waktu cetak desainmu.`
+                  : "Harga dihitung dari bahan dan waktu cetak desainmu, termasuk pergantian warna.",
+              ]}
+            />
+            <button
+              id="btn-save-price"
+              type="button"
+              className="btn btn-primary btn-block"
+              onClick={() => {
+                if (d.mode === "image" && !d.imageUrl) {
+                  toast.show("Upload gambar dulu sebelum menghitung harga.");
+                  return;
+                }
+                const colors = d.mode === "text" ? 2 : d.imgColors + (d.outline > 0 ? 1 : 0);
+                const est = estimateByVolume(volume, colors);
+                setPriced({ key, price: est.price, grams: est.grams });
+                saveDraft("gantungan-nama", D.items);
+                toast.show(`Estimasi harga ${formatRp(est.price)}. Desain tersimpan di browser ini.`);
+              }}
+            >
+              <SaveIcon /> Simpan &amp; hitung harga
+            </button>
+          </>
+        }
+      />
+    </>
+  );
+}

@@ -1,0 +1,135 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { Font } from "opentype.js";
+import { loadFont } from "./fonts";
+import { loadReliefSource, type ReliefSource } from "./imageRelief";
+
+export function useFont(id: string): Font | null {
+  const [font, setFont] = useState<Font | null>(null);
+  useEffect(() => {
+    let alive = true;
+    loadFont(id)
+      .then((f) => alive && setFont(f))
+      .catch((e) => console.error(e));
+    return () => {
+      alive = false;
+    };
+  }, [id]);
+  return font;
+}
+
+const sourceCache = new Map<string, Promise<ReliefSource>>();
+
+export function useReliefSource(url: string | undefined, maxSide = 110) {
+  const [state, setState] = useState<{
+    key: string;
+    src: ReliefSource | null;
+    error: string | null;
+  }>({ key: "", src: null, error: null });
+  const key = url ? `${maxSide}|${url}` : "";
+  useEffect(() => {
+    if (!url) return;
+    let alive = true;
+    let p = sourceCache.get(key);
+    if (!p) {
+      p = loadReliefSource(url, maxSide);
+      sourceCache.set(key, p);
+    }
+    p.then((src) => alive && setState({ key, src, error: null })).catch(
+      (e: Error) => {
+        sourceCache.delete(key);
+        if (alive) setState({ key, src: null, error: e.message });
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [url, key, maxSide]);
+  const current = state.key === key ? state : null;
+  return {
+    source: url && current ? current.src : null,
+    error: url && current ? current.error : null,
+    loading: !!url && !current,
+  };
+}
+
+/** Daftar desain (mode "untuk semua nama"): item pertama jadi acuan. */
+export function useDesigns<T>(initial: T, max = 8) {
+  const [items, setItems] = useState<T[]>([initial]);
+  const [sel, setSel] = useState(0);
+  const idx = Math.min(sel, items.length - 1);
+  const current = items[idx];
+
+  const update = useCallback(
+    (patch: Partial<T>) =>
+      setItems((arr) =>
+        arr.map((it, i) => (i === idx ? { ...it, ...patch } : it)),
+      ),
+    [idx],
+  );
+
+  const addNames = useCallback(
+    (names: string[], make: (base: T, name: string) => T) => {
+      setItems((arr) => {
+        const room = Math.max(0, max - arr.length);
+        const added = names.slice(0, room).map((n) => make(arr[0], n));
+        if (added.length) setSel(arr.length);
+        return [...arr, ...added];
+      });
+    },
+    [max],
+  );
+
+  const remove = useCallback(
+    (i: number) =>
+      setItems((arr) => {
+        if (arr.length <= 1) return arr;
+        setSel((s) => Math.max(0, Math.min(s > i ? s - 1 : s, arr.length - 2)));
+        return arr.filter((_, k) => k !== i);
+      }),
+    [],
+  );
+
+  return { items, sel: idx, setSel, current, update, addNames, remove, max };
+}
+
+export function useToast() {
+  const [msg, setMsg] = useState<string | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const show = useCallback((m: string) => {
+    setMsg(m);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => setMsg(null), 3200);
+  }, []);
+  useEffect(
+    () => () => {
+      if (timer.current) clearTimeout(timer.current);
+    },
+    [],
+  );
+  return { msg, show };
+}
+
+export function saveDraft(slug: string, data: unknown): boolean {
+  try {
+    localStorage.setItem(`forma:${slug}`, JSON.stringify(data));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result));
+    r.onerror = () => reject(new Error("File tidak bisa dibaca"));
+    r.readAsDataURL(file);
+  });
+}
+
+export function useMemoOnce<T>(factory: () => T): T {
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  return useMemo(factory, []);
+}
