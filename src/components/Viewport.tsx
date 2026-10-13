@@ -38,14 +38,17 @@ function Measure({
 const DEFAULT_DIR = new THREE.Vector3(0.55, 0.8, 1).normalize();
 
 function CameraFit({ dims, fitKey }: { dims: Dims | null; fitKey: string }) {
-  const camera = useThree((s) => s.camera) as THREE.PerspectiveCamera;
-  const controls = useThree((s) => s.controls) as unknown as {
-    target: THREE.Vector3;
-    update: () => void;
-  } | null;
+  const get = useThree((s) => s.get);
+  const hasControls = useThree((s) => !!s.controls);
   const fitted = useRef<{ max: number; key: string } | null>(null);
 
   useEffect(() => {
+    const { camera: cam, controls: ctl } = get();
+    const camera = cam as THREE.PerspectiveCamera;
+    const controls = ctl as unknown as {
+      target: THREE.Vector3;
+      update: () => void;
+    } | null;
     if (!dims || !controls) return;
     const max = Math.hypot(dims[0], dims[1], dims[2]);
     const prev = fitted.current;
@@ -68,7 +71,7 @@ function CameraFit({ dims, fitKey }: { dims: Dims | null; fitKey: string }) {
     camera.updateProjectionMatrix();
     controls.update();
     fitted.current = { max, key: fitKey };
-  }, [dims, fitKey, camera, controls]);
+  }, [dims, fitKey, get, hasControls]);
   return null;
 }
 

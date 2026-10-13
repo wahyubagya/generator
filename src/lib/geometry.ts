@@ -96,7 +96,7 @@ export function layoutText(
         break;
     }
   }
-  const shapes = sp.toShapes(false);
+  const shapes = sp.toShapes();
   if (!shapes.length) return null;
   return { shapes, w: bw * s, h: bh * s, area: shapesArea(shapes) };
 }

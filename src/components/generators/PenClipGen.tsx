@@ -12,6 +12,7 @@ import { clipTubeGeometry, extrudeUpright, ICON_OPTIONS, roundedRectShape, type 
 import { saveDraft, useDesigns, useFont, useToast } from "@/lib/hooks";
 import { lowContrast } from "@/lib/palette";
 import { estimateByVolume, formatRp } from "@/lib/pricing";
+import { openWhatsAppOrder } from "@/lib/whatsapp";
 
 type Pen = "pensil" | "pulpen" | "spidol";
 
@@ -224,19 +225,45 @@ export default function PenClipGen() {
                 "Clip saja, tidak termasuk pensil. Harga dihitung dari bahan dan waktu cetak seluruh desain, termasuk pergantian warna.",
               ]}
             />
-            <button
-              id="btn-save-price"
-              type="button"
-              className="btn btn-primary btn-block"
-              onClick={() => {
-                const est = estimateByVolume(volume, 2);
-                setPriced({ key, price: est.price, grams: est.grams });
-                saveDraft("clip-nama-alat-tulis", D.items);
-                toast.show(`Estimasi harga ${formatRp(est.price)}. Desain tersimpan di browser ini.`);
-              }}
-            >
-              <SaveIcon /> Simpan &amp; hitung harga
-            </button>
+            <div className="gen-order-actions" style={{ display: "flex", flexDirection: "column", gap: "8px", width: "100%" }}>
+              <button
+                id="btn-save-order"
+                type="button"
+                className="btn btn-primary btn-block btn-glow"
+                onClick={() => {
+                  const est = estimateByVolume(volume, 2);
+                  setPriced({ key, price: est.price, grams: est.grams });
+                  saveDraft("clip-nama-alat-tulis", D.items);
+                  const waMsg =
+                    `Halo Aureate Craft, saya ingin memesan Klip Nama Alat Tulis:\n` +
+                    `• Nama / Teks: ${d.text}${d.icon ? ` (Ikon: ${d.icon})` : ""}\n` +
+                    `• Jenis Alat Tulis: ${PEN_LABEL[d.pen]}\n` +
+                    `• Tinggi Huruf: ${d.capHeight} mm\n` +
+                    `• Tebal Plat: ${d.plateThick} mm | Tinggi Timbul: ${d.reliefH} mm\n` +
+                    `• Warna Klip / Base: ${d.baseColor}\n` +
+                    `• Warna Nama / Teks: ${d.textColor}\n` +
+                    `• Estimasi Total: ${formatRp(est.price)}\n` +
+                    `Mohon info ketersediaan slot produksi.`;
+                  openWhatsAppOrder(waMsg);
+                  toast.show("Membuka WhatsApp Admin...");
+                }}
+              >
+                Pesan via WhatsApp →
+              </button>
+              <button
+                id="btn-save-price"
+                type="button"
+                className="btn btn-ghost btn-block btn-sm"
+                onClick={() => {
+                  const est = estimateByVolume(volume, 2);
+                  setPriced({ key, price: est.price, grams: est.grams });
+                  saveDraft("clip-nama-alat-tulis", D.items);
+                  toast.show(`Estimasi harga ${formatRp(est.price)}. Desain tersimpan di browser ini.`);
+                }}
+              >
+                <SaveIcon /> Simpan ke Draft Saja
+              </button>
+            </div>
           </>
         }
       />

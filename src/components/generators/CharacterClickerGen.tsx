@@ -2,14 +2,16 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { GeneratorShell, SaveIcon } from "@/components/GeneratorShell";
-import { ReliefMesh } from "@/components/models";
+import { VectorReliefMesh } from "@/components/models";
 import { ColorSelect, Field, PriceBox, Segmented, Slider, UploadBox } from "@/components/ui";
 import { Viewport } from "@/components/Viewport";
 import { annulusShape, extrudeFlat } from "@/lib/geometry";
 import { saveDraft, useReliefSource, useToast } from "@/lib/hooks";
 import { buildRelief } from "@/lib/imageRelief";
+import { buildVectorRelief } from "@/lib/vectorRelief";
 import { estimateByVolume, formatRp } from "@/lib/pricing";
 import { SAMPLES } from "@/lib/samples";
+import { openWhatsAppOrder, submitOrderAndOpenWhatsApp } from "@/lib/whatsapp";
 
 type Design = {
   imageUrl: string;
@@ -40,29 +42,20 @@ const BT = 0.35;
 const ACCESSORY = 6000;
 
 function Scene({ d, onVolume }: { d: Design; onVolume: (v: number) => void }) {
-  const { source, error } = useReliefSource(d.imageUrl, 120);
-  const cellEst = source ? d.width / source.w : 0.4;
-  const dil = Math.max(0, Math.round(d.outline / Math.max(0.15, cellEst)));
-  const relief = useMemo(
-    () =>
-      source
-        ? buildRelief(source, {
-            k: d.colors,
-            baseH: d.baseThick,
-            step: d.step,
-            dilate: dil,
-            baseColor: d.baseColor,
-          })
-        : null,
-    [source, d.colors, d.baseThick, d.step, dil, d.baseColor],
-  );
-  const cell = relief ? d.width / relief.cols : 0;
-  const colors = useMemo(() => {
-    if (!relief) return [];
-    return relief.colors.map((c, i) =>
-      dil > 0 && i === relief.colors.length - 1 ? d.baseColor : (d.overrides[i] ?? c),
-    );
-  }, [relief, dil, d.baseColor, d.overrides]);
+  const { source, error } = useReliefSource(d.imageUrl, 180);
+
+  const vectorRelief = useMemo(() => {
+    if (!source) return null;
+    return buildVectorRelief(source, {
+      width: d.width,
+      k: d.colors,
+      baseThick: d.baseThick,
+      step: d.step,
+      outline: d.outline,
+      baseColor: d.baseColor,
+      overrides: d.overrides,
+    });
+  }, [source, d.width, d.colors, d.baseThick, d.step, d.outline, d.baseColor, d.overrides]);
 
   const ringGeo = useMemo(
     () => (d.ring ? extrudeFlat([annulusShape(RING_OUT, RING_IN)], d.baseThick, { bevel: BT, bevelSize: BT }) : null),
@@ -71,19 +64,19 @@ function Scene({ d, onVolume }: { d: Design; onVolume: (v: number) => void }) {
   useEffect(() => () => ringGeo?.dispose(), [ringGeo]);
 
   useEffect(() => {
-    if (!relief) return;
-    onVolume(relief.cells.length * cell * cell * (d.baseThick + d.step));
-  }, [relief, cell, d.baseThick, d.step, onVolume]);
+    if (!vectorRelief) return;
+    onVolume(vectorRelief.volume);
+  }, [vectorRelief, onVolume]);
 
   if (error) console.error(error);
-  if (!relief) return null;
-  const topZ = (relief.top.z - 0.5 - dil) * cell;
+  if (!vectorRelief) return null;
+
   return (
     <group>
-      <ReliefMesh relief={relief} cell={cell} colors={colors} />
+      <VectorReliefMesh relief={vectorRelief} />
       {ringGeo && (
-        <mesh geometry={ringGeo} position={[relief.top.x * cell, 0, topZ - RING_OUT + 2]} castShadow>
-          <meshStandardMaterial color={d.baseColor} roughness={0.5} />
+        <mesh geometry={ringGeo} position={[vectorRelief.top.x, 0, vectorRelief.top.z - RING_OUT + 2]} castShadow>
+          <meshStandardMaterial color={d.baseColor} roughness={0.38} metalness={0.06} />
         </mesh>
       )}
     </group>
@@ -104,7 +97,7 @@ function Editor({ d, setD, onBack }: { d: Design; setD: (p: Partial<Design>) => 
   const [volume, setVolume] = useState(0);
   const [priced, setPriced] = useState<{ key: string; price: number } | null>(null);
   const toast = useToast();
-  const { source } = useReliefSource(d.imageUrl, 120);
+  const { source } = useReliefSource(d.imageUrl, 180);
   const palette = useMemo(
     () => (source ? buildRelief(source, { k: d.colors, baseH: 1, step: 0 }).colors : []),
     [source, d.colors],
@@ -191,20 +184,62 @@ function Editor({ d, setD, onBack }: { d: Design; setD: (p: Partial<Design>) => 
               "Hasilnya berupa gambar timbul, bukan patung.",
             ]}
           />
-          <button
-            id="btn-save-price"
-            type="button"
-            className="btn btn-primary btn-block"
-            onClick={() => {
-              const est = estimateByVolume(volume, d.colors + (d.outline > 0 ? 1 : 0));
-              const price = est.price + ACCESSORY;
-              setPriced({ key, price });
-              saveDraft("bikin-clicker", { ...d, imageUrl: d.imageUrl.startsWith("data:image/svg") ? d.imageUrl : "(gambar upload)" });
-              toast.show(`Estimasi harga ${formatRp(price)}. Desain tersimpan di browser ini.`);
-            }}
-          >
-            <SaveIcon /> Simpan &amp; minta harga
-          </button>
+          <div className="gen-order-actions" style={{ display: "flex", flexDirection: "column", gap: "8px", width: "100%" }}>
+            <button
+              id="btn-save-order"
+              type="button"
+              className="btn btn-primary btn-block btn-glow"
+              onClick={() => {
+                const est = estimateByVolume(volume, d.colors + (d.outline > 0 ? 1 : 0));
+                const price = est.price + ACCESSORY;
+                setPriced({ key, price });
+                saveDraft("bikin-clicker", { ...d, imageUrl: d.imageUrl.startsWith("data:image/svg") ? d.imageUrl : "(gambar upload)" });
+                const waMsg =
+                  `Halo Aureate Craft, saya ingin memesan Clicker Karakter Custom:\n` +
+                  `• Lebar Produk: ${d.width} mm\n` +
+                  `• Warna Frame/Base: ${d.baseColor}\n` +
+                  `• Jumlah Warna Layer: ${d.colors} warna\n` +
+                  `• Tebal Base: ${d.baseThick} mm\n` +
+                  `• Lubang Gantungan: ${d.ring ? "Ya (Termasuk Paracord & Carabiner)" : "Tanpa Lubang"}\n` +
+                  `• Estimasi Total: ${formatRp(price)}\n` +
+                  `Saya sudah menyiapkan gambar/desain. Mohon info ketersediaan slot produksi.`;
+                submitOrderAndOpenWhatsApp(
+                  {
+                    generatorSlug: "character-clicker",
+                    generatorTitle: "Clicker Karakter Custom",
+                    totalPrice: price,
+                    configJson: {
+                      width: d.width,
+                      baseColor: d.baseColor,
+                      colors: d.colors,
+                      baseThick: d.baseThick,
+                      ring: d.ring,
+                      outline: d.outline,
+                      reliefDepth: d.reliefDepth,
+                    },
+                  },
+                  waMsg
+                );
+                toast.show("Menyimpan pesanan & membuka WhatsApp Admin...");
+              }}
+            >
+              Pesan via WhatsApp →
+            </button>
+            <button
+              id="btn-save-price"
+              type="button"
+              className="btn btn-ghost btn-block btn-sm"
+              onClick={() => {
+                const est = estimateByVolume(volume, d.colors + (d.outline > 0 ? 1 : 0));
+                const price = est.price + ACCESSORY;
+                setPriced({ key, price });
+                saveDraft("bikin-clicker", { ...d, imageUrl: d.imageUrl.startsWith("data:image/svg") ? d.imageUrl : "(gambar upload)" });
+                toast.show(`Estimasi harga ${formatRp(price)}. Desain tersimpan di browser ini.`);
+              }}
+            >
+              <SaveIcon /> Simpan ke Draft Saja
+            </button>
+          </div>
         </>
       }
     />
@@ -237,9 +272,13 @@ export default function CharacterClickerGen() {
           type="button"
           id="btn-photo-help"
           className="btn btn-ghost"
-          onClick={() => toast.show("Layanan bantuan foto menyusul. Untuk sementara pakai gambar dengan latar polos.")}
+          onClick={() => {
+            const waMsg = `Halo Aureate Craft, saya ingin membuat Clicker Karakter tapi butuh bantuan merapikan foto/desain. Mohon info alur dan biayanya.`;
+            openWhatsAppOrder(waMsg);
+            toast.show("Membuka WhatsApp Admin untuk konsultasi foto...");
+          }}
         >
-          Minta bantuan foto
+          Minta bantuan foto via WhatsApp
         </button>
       </div>
       <p className="hint">Belum punya gambar yang siap? Chat admin untuk cek foto serta konfirmasi proses dan biaya bantuannya.</p>

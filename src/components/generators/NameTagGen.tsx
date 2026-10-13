@@ -1,17 +1,20 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import type * as THREE from "three";
 import { GeneratorShell, IconImage, IconText, ModeSwitch, SaveIcon } from "@/components/GeneratorShell";
 import { BulkNames, DesignChips } from "@/components/BulkNames";
-import { LegendMesh, ReliefMesh, useLine } from "@/components/models";
+import { LegendMesh, VectorReliefMesh, useLine } from "@/components/models";
 import { ColorSelect, Field, FontPicker, FontPreviewLoader, PriceBox, Segmented, Slider, TextInput, UploadBox } from "@/components/ui";
 import { Viewport } from "@/components/Viewport";
 import { DEFAULT_FONT } from "@/lib/fonts";
 import { annulusShape, extrudeFlat, mergeGeos, outerOnly, roundedRectShape, type Line } from "@/lib/geometry";
 import { saveDraft, useDesigns, useFont, useReliefSource, useToast } from "@/lib/hooks";
 import { buildRelief } from "@/lib/imageRelief";
+import { buildVectorRelief } from "@/lib/vectorRelief";
 import { lowContrast } from "@/lib/palette";
 import { estimateByVolume, formatRp } from "@/lib/pricing";
+import { openWhatsAppOrder } from "@/lib/whatsapp";
 
 type Design = {
   mode: "text" | "image";
@@ -123,30 +126,20 @@ function TextTag({ d, onVolume }: { d: Design; onVolume: (v: number) => void }) 
 }
 
 function ImageTag({ d, onVolume }: { d: Design; onVolume: (v: number) => void }) {
-  const { source } = useReliefSource(d.imageUrl, 120);
-  const cellEst = source ? d.imgWidth / source.w : 0.4;
-  const dil = Math.max(0, Math.round(d.outline / Math.max(0.15, cellEst)));
-  const relief = useMemo(
-    () =>
-      source
-        ? buildRelief(source, {
-            k: d.imgColors,
-            baseH: d.baseThick,
-            step: Math.max(0.3, d.reliefH * 0.5),
-            dilate: dil,
-            baseColor: d.baseColor,
-          })
-        : null,
-    [source, d.imgColors, d.baseThick, d.reliefH, dil, d.baseColor],
-  );
-  const cell = relief ? d.imgWidth / relief.cols : 0;
-  const colors = useMemo(() => {
-    if (!relief) return [];
-    const hasBase = dil > 0;
-    return relief.colors.map((c, i) =>
-      hasBase && i === relief.colors.length - 1 ? d.baseColor : (d.imgOverrides[i] ?? c),
-    );
-  }, [relief, dil, d.baseColor, d.imgOverrides]);
+  const { source } = useReliefSource(d.imageUrl, 180);
+
+  const vectorRelief = useMemo(() => {
+    if (!source) return null;
+    return buildVectorRelief(source, {
+      width: d.imgWidth,
+      k: d.imgColors,
+      baseThick: d.baseThick,
+      step: Math.max(0.3, d.reliefH * 0.5),
+      outline: d.outline,
+      baseColor: d.baseColor,
+      overrides: d.imgOverrides,
+    });
+  }, [source, d.imgWidth, d.imgColors, d.baseThick, d.reliefH, d.outline, d.baseColor, d.imgOverrides]);
 
   const ringGeo = useMemo(
     () => (d.ring === "tanpa" ? null : extrudeFlat([annulusShape(RING_OUT, RING_IN)], d.baseThick, { bevel: BT, bevelSize: BT })),
@@ -155,22 +148,22 @@ function ImageTag({ d, onVolume }: { d: Design; onVolume: (v: number) => void })
   useEffect(() => () => ringGeo?.dispose(), [ringGeo]);
 
   useEffect(() => {
-    if (!relief) return;
-    onVolume(relief.cells.length * cell * cell * (d.baseThick + d.reliefH * 0.5));
-  }, [relief, cell, d.baseThick, d.reliefH, onVolume]);
+    if (!vectorRelief) return;
+    onVolume(vectorRelief.volume);
+  }, [vectorRelief, onVolume]);
 
-  if (!relief) return null;
-  const topZ = (relief.top.z - 0.5 - dil) * cell;
+  if (!vectorRelief) return null;
+
   return (
     <group>
-      <ReliefMesh relief={relief} cell={cell} colors={colors} />
+      <VectorReliefMesh relief={vectorRelief} />
       {ringGeo && (
         <mesh
           geometry={ringGeo}
-          position={[relief.top.x * cell, 0, topZ - RING_OUT + 1.8]}
+          position={[vectorRelief.top.x, 0, vectorRelief.top.z - RING_OUT + 1.8]}
           castShadow
         >
-          <meshStandardMaterial color={d.baseColor} roughness={0.5} />
+          <meshStandardMaterial color={d.baseColor} roughness={0.38} metalness={0.06} />
         </mesh>
       )}
     </group>
@@ -192,7 +185,7 @@ export default function NameTagGen() {
   const [volume, setVolume] = useState(0);
   const [priced, setPriced] = useState<{ key: string; price: number; grams: number } | null>(null);
   const toast = useToast();
-  const { source } = useReliefSource(d.mode === "image" ? d.imageUrl : undefined, 120);
+  const { source } = useReliefSource(d.mode === "image" ? d.imageUrl : undefined, 180);
   const palette = useMemo(
     () => (source ? buildRelief(source, { k: d.imgColors, baseH: 1, step: 0 }).colors : []),
     [source, d.imgColors],
@@ -359,24 +352,54 @@ export default function NameTagGen() {
                   : "Harga dihitung dari bahan dan waktu cetak desainmu, termasuk pergantian warna.",
               ]}
             />
-            <button
-              id="btn-save-price"
-              type="button"
-              className="btn btn-primary btn-block"
-              onClick={() => {
-                if (d.mode === "image" && !d.imageUrl) {
-                  toast.show("Upload gambar dulu sebelum menghitung harga.");
-                  return;
-                }
-                const colors = d.mode === "text" ? 2 : d.imgColors + (d.outline > 0 ? 1 : 0);
-                const est = estimateByVolume(volume, colors);
-                setPriced({ key, price: est.price, grams: est.grams });
-                saveDraft("gantungan-nama", D.items);
-                toast.show(`Estimasi harga ${formatRp(est.price)}. Desain tersimpan di browser ini.`);
-              }}
-            >
-              <SaveIcon /> Simpan &amp; hitung harga
-            </button>
+            <div className="gen-order-actions" style={{ display: "flex", flexDirection: "column", gap: "8px", width: "100%" }}>
+              <button
+                id="btn-save-order"
+                type="button"
+                className="btn btn-primary btn-block btn-glow"
+                onClick={() => {
+                  if (d.mode === "image" && !d.imageUrl) {
+                    toast.show("Upload gambar dulu sebelum memesan.");
+                    return;
+                  }
+                  const colors = d.mode === "text" ? 2 : d.imgColors + (d.outline > 0 ? 1 : 0);
+                  const est = estimateByVolume(volume, colors);
+                  setPriced({ key, price: est.price, grams: est.grams });
+                  saveDraft("gantungan-nama", D.items);
+                  const waMsg =
+                    `Halo Aureate Craft, saya ingin memesan Gantungan Nama & Logo:\n` +
+                    `• Tipe: ${d.mode === "text" ? `Teks Nama "${d.text}"` : "Logo / Gambar Custom"}\n` +
+                    `• Bentuk Dasar: ${d.shape.toUpperCase()}\n` +
+                    `• Posisi Lubang Ring: ${d.ring.toUpperCase()}\n` +
+                    `• Tebal Alas: ${d.baseThick} mm | Tinggi Timbul: ${d.reliefH} mm\n` +
+                    `• Warna Base: ${d.baseColor} | Warna Timbul: ${d.textColor}\n` +
+                    `• Estimasi Total: ${formatRp(est.price)}\n` +
+                    `Mohon info ketersediaan slot produksi.`;
+                  openWhatsAppOrder(waMsg);
+                  toast.show("Membuka WhatsApp Admin...");
+                }}
+              >
+                Pesan via WhatsApp →
+              </button>
+              <button
+                id="btn-save-price"
+                type="button"
+                className="btn btn-ghost btn-block btn-sm"
+                onClick={() => {
+                  if (d.mode === "image" && !d.imageUrl) {
+                    toast.show("Upload gambar dulu sebelum menghitung harga.");
+                    return;
+                  }
+                  const colors = d.mode === "text" ? 2 : d.imgColors + (d.outline > 0 ? 1 : 0);
+                  const est = estimateByVolume(volume, colors);
+                  setPriced({ key, price: est.price, grams: est.grams });
+                  saveDraft("gantungan-nama", D.items);
+                  toast.show(`Estimasi harga ${formatRp(est.price)}. Desain tersimpan di browser ini.`);
+                }}
+              >
+                <SaveIcon /> Simpan ke Draft Saja
+              </button>
+            </div>
           </>
         }
       />

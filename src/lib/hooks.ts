@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Font } from "opentype.js";
 import { loadFont } from "./fonts";
 import { loadReliefSource, type ReliefSource } from "./imageRelief";
@@ -127,9 +127,4 @@ export function readFileAsDataUrl(file: File): Promise<string> {
     r.onerror = () => reject(new Error("File tidak bisa dibaca"));
     r.readAsDataURL(file);
   });
-}
-
-export function useMemoOnce<T>(factory: () => T): T {
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  return useMemo(factory, []);
 }

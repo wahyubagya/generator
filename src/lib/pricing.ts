@@ -3,6 +3,8 @@ export const MARKETPLACE_FEE = 0.15;
 export const formatRp = (n: number) =>
   "Rp " + Math.round(n).toLocaleString("id-ID");
 
+export const formatRupiah = formatRp;
+
 export const roundUp = (n: number, step = 500) => Math.ceil(n / step) * step;
 
 /** Harga bila bayar lewat marketplace (+15%), dibulatkan ke puluhan. */

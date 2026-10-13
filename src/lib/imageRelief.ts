@@ -42,7 +42,7 @@ function dist(r1: number, g1: number, b1: number, r2: number, g2: number, b2: nu
 
 export async function loadReliefSource(
   url: string,
-  maxSide = 110,
+  maxSide = 180,
 ): Promise<ReliefSource> {
   const img = await loadImage(url);
   const iw = img.naturalWidth || img.width || 300;
@@ -64,7 +64,7 @@ export async function loadReliefSource(
   for (let i = 0; i < w * h; i++) if (rgba[i * 4 + 3] < 128) transparent++;
 
   if (transparent > w * h * 0.02) {
-    for (let i = 0; i < w * h; i++) bg[i] = rgba[i * 4 + 3] < 128 ? 1 : 0;
+    for (let i = 0; i < w * h; i++) bg[i] = rgba[i * 4 + 3] < 140 ? 1 : 0;
   } else {
     // latar polos: flood-fill dari tepi dengan warna sudut
     const corners = [0, w - 1, (h - 1) * w, h * w - 1];
@@ -79,8 +79,15 @@ export async function loadReliefSource(
     cr /= 4;
     cg /= 4;
     cb /= 4;
-    const near = (p: number) =>
-      dist(rgba[p * 4], rgba[p * 4 + 1], rgba[p * 4 + 2], cr, cg, cb) < 56;
+    const isNearWhite = cr > 230 && cg > 230 && cb > 230;
+    const threshold = isNearWhite ? 85 : 68;
+    const near = (p: number) => {
+      const r = rgba[p * 4];
+      const g = rgba[p * 4 + 1];
+      const b = rgba[p * 4 + 2];
+      if (isNearWhite && r > 238 && g > 238 && b > 238) return true;
+      return dist(r, g, b, cr, cg, cb) < threshold;
+    };
     const stack: number[] = [];
     const push = (p: number) => {
       if (!bg[p] && near(p)) {
@@ -106,6 +113,27 @@ export async function loadReliefSource(
       if (y < h - 1) push(p + w);
     }
   }
+
+  // Defringe & Clean Border Noise:
+  // Hapus piksel liar/duri terisolasi di pinggiran gambar
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const p = y * w + x;
+      if (bg[p] === 0) {
+        let fgNeighbors = 0;
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dy === 0 && dx === 0) continue;
+            if (bg[(y + dy) * w + (x + dx)] === 0) fgNeighbors++;
+          }
+        }
+        if (fgNeighbors < 2) {
+          bg[p] = 1;
+        }
+      }
+    }
+  }
+
   return { w, h, rgba, bg };
 }
 
@@ -167,12 +195,37 @@ export function quantize(src: ReliefSource, k: number): Quantized {
     sums[best].g += g;
     sums[best].b += b;
   }
+
+  // Majority smoothing filter: merapikan batas warna agar tidak bergerigi/bintik
+  const cleanIdx = new Uint8Array(idx);
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const p = y * w + x;
+      if (idx[p] === 255) continue;
+      const counts: number[] = new Array(chosen.length).fill(0);
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const np = (y + dy) * w + (x + dx);
+          if (idx[np] !== 255) {
+            counts[idx[np]]++;
+          }
+        }
+      }
+      for (let c = 0; c < chosen.length; c++) {
+        if (counts[c] >= 5) {
+          cleanIdx[p] = c;
+          break;
+        }
+      }
+    }
+  }
+
   const palette = sums.map((s, i) =>
     s.n
       ? toHex(s.r / s.n, s.g / s.n, s.b / s.n)
       : toHex(chosen[i][0], chosen[i][1], chosen[i][2]),
   );
-  return { idx, palette, areas: sums.map((s) => s.n) };
+  return { idx: cleanIdx, palette, areas: sums.map((s) => s.n) };
 }
 
 export function buildRelief(

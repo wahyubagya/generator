@@ -12,6 +12,7 @@ import { saveDraft, useDesigns, useFont, useToast } from "@/lib/hooks";
 import { lowContrast } from "@/lib/palette";
 import { CLICKER_BASE, CLICKER_EXTRA, clickerPrice, formatRp } from "@/lib/pricing";
 import { TEXTURE_TAGS, WALL_TEXTURES, getBumpTexture, textureThumb } from "@/lib/textures";
+import { openWhatsAppOrder } from "@/lib/whatsapp";
 
 type Design = {
   text: string;
@@ -23,7 +24,7 @@ type Design = {
 };
 
 const INITIAL: Design = {
-  text: "ELS",
+  text: "AC",
   fontId: DEFAULT_FONT,
   texture: "polos",
   housing: "#f4f4f2",
@@ -99,6 +100,8 @@ export default function KeychainClickerGen() {
   useEffect(() => {
     const t: Record<string, string | null> = {};
     for (const w of WALL_TEXTURES) t[w.id] = textureThumb(w.id);
+    // Thumbnail dibuat dari canvas (hanya ada di client), jadi harus setelah mount agar tidak hydration mismatch.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setThumbs(t);
   }, []);
 
@@ -157,7 +160,7 @@ export default function KeychainClickerGen() {
                   />
                 </Field>
                 <Field label="Pilih gaya huruf">
-                  <FontPicker value={d.fontId} sample={d.text || "ELS"} onChange={(fontId) => D.update({ fontId })} />
+                  <FontPicker value={d.fontId} sample={d.text || "AC"} onChange={(fontId) => D.update({ fontId })} />
                 </Field>
                 <Field label="Tekstur dinding" hint="Pilih pola yang kamu suka.">
                   <Chips options={TEXTURE_TAGS} value={tag} onChange={setTag} />
@@ -206,20 +209,43 @@ export default function KeychainClickerGen() {
                 `Termasuk carabiner ring bulat. ${n} slot untuk desain ini.`,
               ]}
             />
-            <button
-              id="btn-save-order"
-              type="button"
-              className="btn btn-primary btn-block"
-              onClick={() =>
-                toast.show(
-                  saveDraft("gantungan-keycap", D.items)
-                    ? "Desain tersimpan di browser ini. Fitur pemesanan menyusul."
-                    : "Gagal menyimpan desain.",
-                )
-              }
-            >
-              <SaveIcon /> Simpan &amp; pesan
-            </button>
+            <div className="gen-order-actions" style={{ display: "flex", flexDirection: "column", gap: "8px", width: "100%" }}>
+              <button
+                id="btn-save-order"
+                type="button"
+                className="btn btn-primary btn-block btn-glow"
+                onClick={() => {
+                  saveDraft("gantungan-keycap", D.items);
+                  const waMsg =
+                    `Halo Aureate Craft, saya ingin memesan Gantungan Clicker Nama:\n` +
+                    `• Teks / Huruf: ${d.text}\n` +
+                    `• Warna Dinding: ${d.housing}\n` +
+                    `• Warna Keycap: ${d.key}\n` +
+                    `• Warna Huruf: ${d.legend}\n` +
+                    `• Tekstur Dinding: ${d.texture}\n` +
+                    `• Jumlah Tombol: ${n} Slot\n` +
+                    `• Total Estimasi: ${formatRp(total)}\n` +
+                    `Mohon informasi slot dan konfirmasi pesanan.`;
+                  openWhatsAppOrder(waMsg);
+                  toast.show("Membuka WhatsApp Admin...");
+                }}
+              >
+                Pesan via WhatsApp →
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost btn-block btn-sm"
+                onClick={() =>
+                  toast.show(
+                    saveDraft("gantungan-keycap", D.items)
+                      ? "Desain tersimpan di browser ini."
+                      : "Gagal menyimpan desain.",
+                  )
+                }
+              >
+                <SaveIcon /> Simpan ke Draft Saja
+              </button>
+            </div>
           </>
         }
       />

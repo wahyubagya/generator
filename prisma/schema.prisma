@@ -1,0 +1,62 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id           String    @id @default(cuid())
+  name         String
+  email        String    @unique
+  passwordHash String
+  role         String    @default("CUSTOMER") // "CUSTOMER" | "ADMIN"
+  phone        String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  orders       Order[]
+  drafts       Draft[]
+}
+
+model Order {
+  id              String      @id // e.g. AC-1728864000-A1B2
+  userId          String?
+  user            User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  customerName    String
+  customerPhone   String
+  customerEmail   String?
+  shippingAddress String?
+  notes           String?
+  totalPrice      Int         @default(0)
+  status          String      @default("PENDING") // PENDING, CONFIRMED, PRINTING, SHIPPED, COMPLETED, CANCELLED
+  paymentMethod   String      @default("WHATSAPP_MANUAL")
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  items           OrderItem[]
+}
+
+model OrderItem {
+  id             String  @id @default(cuid())
+  orderId        String
+  order          Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  generatorSlug  String  // e.g. "character-clicker", "piagam-lari"
+  generatorTitle String  // e.g. "3D Character Clicker"
+  configJson     String  // JSON string: colors, dimensions, text, relief settings
+  previewImage   String? // Data URL or thumbnail image
+  quantity       Int     @default(1)
+  unitPrice      Int     @default(0)
+  subtotal       Int     @default(0)
+}
+
+model Draft {
+  id             String   @id @default(cuid())
+  userId         String?
+  user           User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  generatorSlug  String
+  title          String
+  designDataJson String
+  previewImage   String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}

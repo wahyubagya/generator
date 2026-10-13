@@ -11,6 +11,7 @@ import {
 } from "@/lib/geometry";
 import type { Font } from "opentype.js";
 import type { Relief } from "@/lib/imageRelief";
+import type { VectorReliefResult } from "@/lib/vectorRelief";
 
 /* ---------------------------------------------------------------- Legend -- */
 
@@ -163,7 +164,7 @@ export function ReliefMesh({
     const cache = colors.map((c) => new THREE.Color(c));
     relief.cells.forEach((c, i) => {
       dummy.position.set(c.x * cell, c.h / 2, c.z * cell);
-      dummy.scale.set(cell, c.h, cell);
+      dummy.scale.set(cell * 1.02, c.h, cell * 1.02);
       dummy.updateMatrix();
       m.setMatrixAt(i, dummy.matrix);
       col.copy(cache[c.c] ?? cache[0] ?? col.set("#888"));
@@ -191,3 +192,26 @@ export function ReliefMesh({
     </instancedMesh>
   );
 }
+
+/** Relief Vektor Mulus (ExtrudeGeometry) — dinding lengkung menyatu mulus tanpa balok piksel/pecah. */
+export function VectorReliefMesh({
+  relief,
+}: {
+  relief: VectorReliefResult;
+}) {
+  return (
+    <group>
+      {relief.baseGeometry && (
+        <mesh geometry={relief.baseGeometry} castShadow receiveShadow>
+          <meshStandardMaterial color={relief.baseColor} roughness={0.38} metalness={0.06} />
+        </mesh>
+      )}
+      {relief.layers.map((layer, idx) => (
+        <mesh key={idx} geometry={layer.geometry} castShadow receiveShadow>
+          <meshStandardMaterial color={layer.color} roughness={0.38} metalness={0.06} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+

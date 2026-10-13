@@ -11,6 +11,7 @@ import { extrudeFlat, roundedRectShape, type IconKind } from "@/lib/geometry";
 import { saveDraft, useDesigns, useFont, useToast } from "@/lib/hooks";
 import { lowContrast } from "@/lib/palette";
 import { CLICKER_BASE, CLICKER_EXTRA, clickerPrice, formatRp } from "@/lib/pricing";
+import { openWhatsAppOrder } from "@/lib/whatsapp";
 
 type Mod = { icon: IconKind | null; housing: string; key: string; legend: string };
 type Design = { name: string; fontId: string; mods: Mod[] };
@@ -59,7 +60,7 @@ function makeDesign(base: Design, name: string): Design {
   };
 }
 
-const INITIAL: Design = makeDesign({ name: "", fontId: DEFAULT_FONT, mods: [] }, "ELS3");
+const INITIAL: Design = makeDesign({ name: "", fontId: DEFAULT_FONT, mods: [] }, "AC3");
 
 const SHAPE: KeycapShape = { w: 18, d: 18, h: 9.5, taper: 2, radius: 3.2 };
 
@@ -189,7 +190,7 @@ export default function ModularClickerGen() {
                   <TextInput value={d.name} max={MAX_SLOTS} upper id="input-clicker-name" onChange={setName} />
                 </Field>
                 <Field label="Pilih gaya huruf">
-                  <FontPicker value={d.fontId} sample={d.name || "ELS"} onChange={(fontId) => D.update({ fontId })} />
+                  <FontPicker value={d.fontId} sample={d.name || "AC"} onChange={(fontId) => D.update({ fontId })} />
                 </Field>
                 <Field label={`Isi modul ${mi + 1}`}>
                   {ModChips}
@@ -250,20 +251,43 @@ export default function ModularClickerGen() {
                 `${formatRp(CLICKER_BASE)} untuk 1 tombol, tambah ${formatRp(CLICKER_EXTRA)} tiap tombol berikutnya. Termasuk carabiner.`,
               ]}
             />
-            <button
-              id="btn-save-order"
-              type="button"
-              className="btn btn-primary btn-block"
-              onClick={() =>
-                toast.show(
-                  saveDraft("modular-clicker", D.items)
-                    ? "Desain tersimpan di browser ini. Fitur pemesanan menyusul."
-                    : "Gagal menyimpan desain.",
-                )
-              }
-            >
-              <SaveIcon /> Simpan &amp; pesan desain
-            </button>
+            <div className="gen-order-actions" style={{ display: "flex", flexDirection: "column", gap: "8px", width: "100%" }}>
+              <button
+                id="btn-save-order"
+                type="button"
+                className="btn btn-primary btn-block btn-glow"
+                onClick={() => {
+                  saveDraft("modular-clicker", D.items);
+                  const modulesSummary = d.mods
+                    .map((m, i) => `Modul ${i + 1}: ${d.name[i] || (m.icon ? `Ikon ${m.icon}` : "-")} (Rumah: ${m.housing}, Key: ${m.key}, Huruf: ${m.legend})`)
+                    .join("\n• ");
+                  const waMsg =
+                    `Halo Aureate Craft, saya ingin memesan Clicker Nama Susun (Modular):\n` +
+                    `• Rangkaian Nama: ${d.name}\n` +
+                    `• Jumlah Tombol: ${d.mods.length} Modul\n` +
+                    `• Konfigurasi Tiap Modul:\n• ${modulesSummary}\n` +
+                    `• Total Estimasi: ${formatRp(total)}\n` +
+                    `Mohon info ketersediaan slot produksi dan pengerjaan.`;
+                  openWhatsAppOrder(waMsg);
+                  toast.show("Membuka WhatsApp Admin...");
+                }}
+              >
+                Pesan via WhatsApp →
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost btn-block btn-sm"
+                onClick={() =>
+                  toast.show(
+                    saveDraft("modular-clicker", D.items)
+                      ? "Desain tersimpan di browser ini."
+                      : "Gagal menyimpan desain.",
+                  )
+                }
+              >
+                <SaveIcon /> Simpan ke Draft Saja
+              </button>
+            </div>
           </>
         }
       />

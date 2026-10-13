@@ -3,14 +3,15 @@
 import { useMemo } from "react";
 import { GeneratorShell, IconImage, IconText, ModeSwitch, SaveIcon } from "@/components/GeneratorShell";
 import { BulkNames, DesignChips } from "@/components/BulkNames";
-import { KeycapMesh, LegendMesh, ReliefMesh, keycapTop, useLine, type KeycapShape } from "@/components/models";
+import { KeycapMesh, LegendMesh, keycapTop, useLine, type KeycapShape } from "@/components/models";
 import { ColorSelect, Field, FontPicker, FontPreviewLoader, PriceBox, Segmented, Slider, TextInput, UploadBox } from "@/components/ui";
 import { Viewport } from "@/components/Viewport";
 import { DEFAULT_FONT } from "@/lib/fonts";
 import { saveDraft, useDesigns, useFont, useReliefSource, useToast } from "@/lib/hooks";
-import { buildRelief } from "@/lib/imageRelief";
+import { buildVectorRelief } from "@/lib/vectorRelief";
 import { lowContrast } from "@/lib/palette";
 import { KEYCAP_PRICE, formatRp } from "@/lib/pricing";
+import { openWhatsAppOrder } from "@/lib/whatsapp";
 import { useState } from "react";
 
 type Design = {
@@ -27,7 +28,7 @@ type Design = {
 };
 
 const INITIAL: Design = {
-  text: "ELS",
+  text: "AC",
   fontId: DEFAULT_FONT,
   mode: "text",
   widthU: 1,
@@ -62,22 +63,35 @@ function KeycapScene({ d }: { d: Design }) {
   );
   const top = keycapTop(shape);
   const line = useLine(font, d.text, d.legendSize, top.w * 0.94);
-  const { source } = useReliefSource(d.mode === "image" ? d.imageUrl : undefined, 100);
-  const relief = useMemo(
-    () => (source ? buildRelief(source, { k: 1, baseH: 0.8, step: 0 }) : null),
-    [source],
-  );
-  const cell = relief
-    ? Math.min(top.w * 0.95, (d.legendSize / 5.5) * 9) / Math.max(relief.cols, relief.rows)
-    : 0;
-  const colors = useMemo(() => [d.legend], [d.legend]);
+  const { source } = useReliefSource(d.mode === "image" ? d.imageUrl : undefined, 160);
+  const vectorRelief = useMemo(() => {
+    if (!source) return null;
+    const wMm = Math.min(top.w * 0.95, (d.legendSize / 5.5) * 9);
+    return buildVectorRelief(source, {
+      width: wMm,
+      k: 1,
+      baseThick: 0.05,
+      step: 0.8,
+      outline: 0,
+      baseColor: d.body,
+      overrides: { 0: d.legend },
+    });
+  }, [source, top.w, d.legendSize, d.body, d.legend]);
 
   return (
     <KeycapMesh shape={shape} color={d.body}>
       {d.mode === "text" ? (
         <LegendMesh line={line} depth={0.8} color={d.legend} />
       ) : (
-        relief && <ReliefMesh relief={relief} cell={cell} colors={colors} />
+        vectorRelief && (
+          <group position={[0, 0, 0]}>
+            {vectorRelief.layers.map((layer, idx) => (
+              <mesh key={idx} geometry={layer.geometry} castShadow receiveShadow>
+                <meshStandardMaterial color={d.legend} roughness={0.38} metalness={0.06} />
+              </mesh>
+            ))}
+          </group>
+        )
       )}
     </KeycapMesh>
   );
@@ -141,7 +155,7 @@ export default function KeycapGen() {
                   <TextInput value={d.text} max={8} id="input-keycap-text" onChange={(text) => D.update({ text })} />
                 </Field>
                 <Field label="Pilih gaya huruf">
-                  <FontPicker value={d.fontId} sample={d.text || "ELS"} onChange={(fontId) => D.update({ fontId })} />
+                  <FontPicker value={d.fontId} sample={d.text || "AC"} onChange={(fontId) => D.update({ fontId })} />
                 </Field>
                 <Slider label="Ukuran tulisan" value={d.legendSize} min={3} max={8} step={0.5} onChange={(legendSize) => D.update({ legendSize })} />
               </>
@@ -217,20 +231,44 @@ export default function KeycapGen() {
                   : "Harga tetap untuk desain ini.",
               ]}
             />
-            <button
-              id="btn-save-order"
-              type="button"
-              className="btn btn-primary btn-block"
-              onClick={() =>
-                toast.show(
-                  saveDraft("keycap", D.items)
-                    ? "Desain tersimpan di browser ini. Fitur pemesanan menyusul."
-                    : "Gagal menyimpan desain.",
-                )
-              }
-            >
-              <SaveIcon /> Simpan &amp; pesan desain
-            </button>
+            <div className="gen-order-actions" style={{ display: "flex", flexDirection: "column", gap: "8px", width: "100%" }}>
+              <button
+                id="btn-save-order"
+                type="button"
+                className="btn btn-primary btn-block btn-glow"
+                onClick={() => {
+                  saveDraft("keycap", D.items);
+                  const waMsg =
+                    `Halo Aureate Craft, saya ingin memesan Keycap Custom:\n` +
+                    `• Tipe Konten: ${d.mode === "text" ? `Teks "${d.text}"` : "Gambar/Logo Custom"}\n` +
+                    `• Profil Keycap: ${d.profile.toUpperCase()} (Tinggi ${HEIGHTS[d.profile]}mm)\n` +
+                    `• Sudut Keycap: ${d.corner}\n` +
+                    `• Lebar Keycap: ${d.widthU}U\n` +
+                    `• Warna Bodi Keycap: ${d.body}\n` +
+                    `• Warna Tulisan/Legenda: ${d.legend}\n` +
+                    `• Jumlah Pesanan: ${D.items.length} pcs\n` +
+                    `• Total Estimasi: ${formatRp(total)}\n` +
+                    `Mohon info ketersediaan slot produksi.`;
+                  openWhatsAppOrder(waMsg);
+                  toast.show("Membuka WhatsApp Admin...");
+                }}
+              >
+                Pesan via WhatsApp →
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost btn-block btn-sm"
+                onClick={() =>
+                  toast.show(
+                    saveDraft("keycap", D.items)
+                      ? "Desain tersimpan di browser ini."
+                      : "Gagal menyimpan desain.",
+                  )
+                }
+              >
+                <SaveIcon /> Simpan ke Draft Saja
+              </button>
+            </div>
           </>
         }
       />
