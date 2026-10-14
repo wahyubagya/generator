@@ -186,6 +186,35 @@ export function annulusShape(rOut: number, rIn: number): THREE.Shape {
 }
 
 /**
+ * Bentuk kuping gantungan (Eyelet Tab) terpadu:
+ * Memiliki pangkal tebal dan kokoh yang menyatu rapi ke dinding clicker/gantungan,
+ * dan lubang bulat presisi di ujung luar untuk tali paracord atau ring carabiner.
+ */
+export function clickerEyeletShape(
+  outerR = 4.8,
+  holeR = 2.4,
+  baseW = 8.5,
+  length = 6.2,
+): THREE.Shape {
+  const s = new THREE.Shape();
+  const halfBase = baseW / 2;
+
+  // Kontur luar CCW (Counter-Clockwise) agar normal dinding luar & dalam ter-orientasi benar
+  s.moveTo(halfBase, 0);
+  s.lineTo(outerR, length);
+  s.absarc(0, length, outerR, 0, Math.PI, false);
+  s.lineTo(-halfBase, 0);
+  s.closePath();
+
+  // Lubang tembus CW (Clockwise) agar normal dinding silinder dalam mengarah ke dalam lubang
+  const hole = new THREE.Path();
+  hole.absarc(0, length, holeR, 0, Math.PI * 2, true);
+  s.holes.push(hole);
+
+  return s;
+}
+
+/**
  * Profil "C" (penjepit pensil) memanjang di sumbu X, pusat di (0,0,0),
  * celah menghadap -Z (belakang). Panjang `length` di-center pada x = 0.
  */

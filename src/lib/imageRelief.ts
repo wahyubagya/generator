@@ -56,6 +56,8 @@ export async function loadReliefSource(
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (!ctx) throw new Error("Canvas tidak tersedia");
   ctx.clearRect(0, 0, w, h);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
   ctx.drawImage(img, 0, 0, w, h);
   const rgba = ctx.getImageData(0, 0, w, h).data;
   const bg = new Uint8Array(w * h);

@@ -15,9 +15,7 @@ export default function Home() {
     { id: "all", label: "Semua Generator" },
     { id: "clicker", label: "Fidget Clicker" },
     { id: "keychain", label: "Gantungan & Klip" },
-    { id: "accessories", label: "Keycap Keyboard" },
-    { id: "organizer", label: "Gridfinity & Rak" },
-    { id: "display", label: "Pajangan & Lithophane" },
+    { id: "accessories", label: "Aksesori" },
   ];
 
   const filteredProducts =
@@ -83,7 +81,7 @@ export default function Home() {
               className="btn-secondary btn-lg"
               id="cta-jelajah-generator"
             >
-              Jelajahi 9 Generator
+              Jelajahi Semua Generator
             </Link>
           </div>
 

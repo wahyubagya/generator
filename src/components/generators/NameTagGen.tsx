@@ -126,7 +126,7 @@ function TextTag({ d, onVolume }: { d: Design; onVolume: (v: number) => void }) 
 }
 
 function ImageTag({ d, onVolume }: { d: Design; onVolume: (v: number) => void }) {
-  const { source } = useReliefSource(d.imageUrl, 180);
+  const { source } = useReliefSource(d.imageUrl, 240);
 
   const vectorRelief = useMemo(() => {
     if (!source) return null;
@@ -185,7 +185,7 @@ export default function NameTagGen() {
   const [volume, setVolume] = useState(0);
   const [priced, setPriced] = useState<{ key: string; price: number; grams: number } | null>(null);
   const toast = useToast();
-  const { source } = useReliefSource(d.mode === "image" ? d.imageUrl : undefined, 180);
+  const { source } = useReliefSource(d.mode === "image" ? d.imageUrl : undefined, 240);
   const palette = useMemo(
     () => (source ? buildRelief(source, { k: d.imgColors, baseH: 1, step: 0 }).colors : []),
     [source, d.imgColors],

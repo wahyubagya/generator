@@ -81,12 +81,15 @@ function Bed() {
     c.width = c.height = 256;
     const g = c.getContext("2d");
     if (g) {
-      g.fillStyle = "#23262f";
+      // Warna dasar alas cerah (studio build-plate)
+      g.fillStyle = "#e5ebf2";
       g.fillRect(0, 0, 256, 256);
-      g.strokeStyle = "rgba(255,255,255,0.07)";
+      // Garis grid utama
+      g.strokeStyle = "rgba(71, 85, 105, 0.22)";
       g.lineWidth = 2;
       g.strokeRect(0, 0, 256, 256);
-      g.strokeStyle = "rgba(255,255,255,0.035)";
+      // Garis grid sekunder
+      g.strokeStyle = "rgba(71, 85, 105, 0.10)";
       g.lineWidth = 1;
       for (let i = 1; i < 5; i++) {
         g.beginPath();
@@ -107,7 +110,7 @@ function Bed() {
   return (
     <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]} receiveShadow>
       <planeGeometry args={[1200, 1200]} />
-      <meshStandardMaterial map={tex} roughness={0.95} metalness={0} />
+      <meshStandardMaterial map={tex} roughness={0.92} metalness={0} />
     </mesh>
   );
 }
@@ -134,12 +137,12 @@ export function Viewport({
         camera={{ position: [60, 70, 90], fov: 35, near: 1, far: 4000 }}
         gl={{ antialias: true, preserveDrawingBuffer: true }}
       >
-        <color attach="background" args={["#15171d"]} />
-        <fog attach="fog" args={["#15171d", 500, 1400]} />
-        <hemisphereLight args={["#ffffff", "#3b4050", 1.05]} />
+        <color attach="background" args={["#eef2f7"]} />
+        <fog attach="fog" args={["#eef2f7", 500, 1400]} />
+        <hemisphereLight args={["#ffffff", "#94a3b8", 1.15]} />
         <directionalLight
           position={[80, 160, 100]}
-          intensity={2.2}
+          intensity={2.0}
           castShadow
           shadow-mapSize={[2048, 2048]}
           shadow-camera-left={-120}
@@ -150,15 +153,16 @@ export function Viewport({
           shadow-camera-far={500}
           shadow-bias={-0.0004}
         />
-        <directionalLight position={[-100, 60, -80]} intensity={0.6} />
+        <directionalLight position={[-100, 60, -80]} intensity={0.7} />
         <Bed />
         <ContactShadows
           position={[0, 0.02, 0]}
-          opacity={0.45}
+          opacity={0.35}
           scale={260}
-          blur={2.6}
+          blur={2.4}
           far={50}
           resolution={512}
+          color="#0f172a"
         />
         <Suspense fallback={null}>
           <Measure onSize={setDims}>{children}</Measure>

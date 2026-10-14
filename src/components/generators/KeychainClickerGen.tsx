@@ -1,13 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useFrame } from "@react-three/fiber";
+import * as THREE from "three";
 import { GeneratorShell, SaveIcon } from "@/components/GeneratorShell";
 import { BulkNames, DesignChips } from "@/components/BulkNames";
 import { KeycapMesh, LegendMesh, keycapTop, useLine, type KeycapShape } from "@/components/models";
 import { Chips, ColorSelect, Field, FontPicker, FontPreviewLoader, PriceBox, TextInput } from "@/components/ui";
 import { Viewport } from "@/components/Viewport";
+import { playMechanicalClick } from "@/lib/audio";
 import { DEFAULT_FONT } from "@/lib/fonts";
-import { extrudeFlat, roundedRectShape } from "@/lib/geometry";
+import { clickerEyeletShape, extrudeFlat, roundedRectShape } from "@/lib/geometry";
 import { saveDraft, useDesigns, useFont, useToast } from "@/lib/hooks";
 import { lowContrast } from "@/lib/palette";
 import { CLICKER_BASE, CLICKER_EXTRA, clickerPrice, formatRp } from "@/lib/pricing";
@@ -36,7 +39,76 @@ const MAX_SLOTS = 10;
 const PITCH = 22;
 const SHAPE: KeycapShape = { w: 16.5, d: 16.5, h: 8.5, taper: 1.8, radius: 3 };
 
-function Cell({ d, char, tex }: { d: Design; char: string; tex: ReturnType<typeof getBumpTexture> }) {
+function InteractiveKeycap({
+  shape,
+  color,
+  line,
+  legendColor,
+  pitch,
+}: {
+  shape: KeycapShape;
+  color: string;
+  line: ReturnType<typeof useLine>;
+  legendColor: string;
+  pitch: number;
+}) {
+  const ref = useRef<THREE.Group>(null);
+  const offset = useRef(0);
+  const target = useRef(0);
+  const [hovered, setHovered] = useState(false);
+
+  useEffect(() => {
+    document.body.style.cursor = hovered ? "pointer" : "default";
+    return () => {
+      document.body.style.cursor = "default";
+    };
+  }, [hovered]);
+
+  useFrame((_, delta) => {
+    offset.current = THREE.MathUtils.damp(offset.current, target.current, 32, delta);
+    if (ref.current) {
+      ref.current.position.y = 11.2 + offset.current;
+    }
+    if (target.current !== 0) target.current = 0;
+  });
+
+  const handleClick = (e: { stopPropagation: () => void }) => {
+    e.stopPropagation();
+    playMechanicalClick(pitch);
+    target.current = -2.2;
+  };
+
+  return (
+    <group
+      ref={ref}
+      position={[0, 11.2, 0]}
+      onClick={handleClick}
+      onPointerOver={(e) => {
+        e.stopPropagation();
+        setHovered(true);
+      }}
+      onPointerOut={() => setHovered(false)}
+    >
+      <KeycapMesh shape={shape} color={color}>
+        <LegendMesh line={line} depth={0.8} color={legendColor} />
+      </KeycapMesh>
+    </group>
+  );
+}
+
+function Cell({
+  d,
+  char,
+  tex,
+  slotIndex,
+  totalSlots,
+}: {
+  d: Design;
+  char: string;
+  tex: ReturnType<typeof getBumpTexture>;
+  slotIndex: number;
+  totalSlots: number;
+}) {
   const font = useFont(d.fontId);
   const housing = useMemo(
     () => extrudeFlat([roundedRectShape(PITCH, 22, 5.5)], 10, { bevel: 0.6, bevelSize: 0.6 }),
@@ -44,6 +116,8 @@ function Cell({ d, char, tex }: { d: Design; char: string; tex: ReturnType<typeo
   );
   const top = keycapTop(SHAPE);
   const line = useLine(font, char, 6, top.w * 0.92);
+  const pitch = 0.92 + (slotIndex / Math.max(1, totalSlots)) * 0.16;
+
   return (
     <group>
       <mesh geometry={housing} castShadow receiveShadow>
@@ -55,11 +129,13 @@ function Cell({ d, char, tex }: { d: Design; char: string; tex: ReturnType<typeo
           bumpScale={tex ? 2.2 : 0}
         />
       </mesh>
-      <group position={[0, 11.2, 0]}>
-        <KeycapMesh shape={SHAPE} color={d.key}>
-          <LegendMesh line={line} depth={0.8} color={d.legend} />
-        </KeycapMesh>
-      </group>
+      <InteractiveKeycap
+        shape={SHAPE}
+        color={d.key}
+        line={line}
+        legendColor={d.legend}
+        pitch={pitch}
+      />
     </group>
   );
 }
@@ -68,16 +144,38 @@ function Scene({ d }: { d: Design }) {
   const n = Math.max(1, Math.min(MAX_SLOTS, d.text.length));
   const tex = useMemo(() => getBumpTexture(d.texture), [d.texture]);
   const total = n * PITCH;
+  const eyeletGeo = useMemo(() => {
+    const geo = extrudeFlat([clickerEyeletShape(4.8, 2.3, 9.2, 5.6)], 4.2, {
+      bevel: 0.4,
+      bevelSize: 0.35,
+      curveSegments: 20,
+    });
+    geo.rotateY(Math.PI / 2);
+    return geo;
+  }, []);
+  useEffect(() => () => eyeletGeo.dispose(), [eyeletGeo]);
+
   return (
     <group>
       {Array.from({ length: n }, (_, i) => (
         <group key={i} position={[(i - (n - 1) / 2) * PITCH, 0, 0]}>
-          <Cell d={d} char={d.text[i] ?? ""} tex={tex} />
+          <Cell d={d} char={d.text[i] ?? ""} tex={tex} slotIndex={i} totalSlots={n} />
         </group>
       ))}
-      <mesh position={[-total / 2 - 2.6, 6.2, 0]} castShadow>
-        <torusGeometry args={[5.2, 1.3, 14, 40]} />
-        <meshStandardMaterial color="#b7bcc6" metalness={0.75} roughness={0.28} />
+      <mesh
+        geometry={eyeletGeo}
+        position={[-total / 2 + 1.2, 2.5, 0]}
+        castShadow
+        receiveShadow
+      >
+        <meshStandardMaterial
+          key={tex ? "bump" : "plain"}
+          color={d.housing}
+          roughness={0.62}
+          side={THREE.DoubleSide}
+          bumpMap={tex ?? undefined}
+          bumpScale={tex ? 2.2 : 0}
+        />
       </mesh>
     </group>
   );

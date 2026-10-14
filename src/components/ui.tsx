@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
+import { createPortal } from "react-dom";
 import type { ReactNode, DragEvent } from "react";
 import { FONT_OPTIONS } from "@/lib/fonts";
 import { PALETTE, colorName } from "@/lib/palette";
@@ -37,29 +39,38 @@ export function Tabs<T extends string>({
   );
 }
 
+export type SegmentedOption<T extends string | number> = {
+  id?: T;
+  value?: T;
+  label: string;
+};
+
 export function Segmented<T extends string | number>({
   options,
   value,
   onChange,
   id,
 }: {
-  options: { id: T; label: string }[];
+  options: SegmentedOption<T>[];
   value: T;
   onChange: (v: T) => void;
   id?: string;
 }) {
   return (
     <div className="seg" id={id}>
-      {options.map((o) => (
-        <button
-          key={String(o.id)}
-          type="button"
-          className={`seg-btn ${value === o.id ? "is-active" : ""}`}
-          onClick={() => onChange(o.id)}
-        >
-          {o.label}
-        </button>
-      ))}
+      {options.map((o, idx) => {
+        const optVal = (o.id !== undefined ? o.id : o.value) as T;
+        return (
+          <button
+            key={String(optVal ?? idx)}
+            type="button"
+            className={`seg-btn ${value === optVal ? "is-active" : ""}`}
+            onClick={() => onChange(optVal)}
+          >
+            {o.label}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -261,13 +272,60 @@ export function ColorSelect({
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
+  const [popStyle, setPopStyle] = useState<CSSProperties | null>(null);
+
   useEffect(() => {
     if (!open) return;
     const h = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (!ref.current?.contains(t) && !popRef.current?.contains(t)) setOpen(false);
     };
+    const k = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
     document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
+    document.addEventListener("keydown", k);
+    return () => {
+      document.removeEventListener("mousedown", h);
+      document.removeEventListener("keydown", k);
+    };
+  }, [open]);
+
+  // Popup di-portal ke <body> dengan posisi fixed agar tidak terpotong panel
+  // yang bisa di-scroll / tertutup footer harga. Membuka ke atas bila ruang bawah sempit.
+  useLayoutEffect(() => {
+    if (!open) {
+      setPopStyle(null);
+      return;
+    }
+    const place = () => {
+      const tr = triggerRef.current?.getBoundingClientRect();
+      if (!tr) return;
+      const popH = popRef.current?.offsetHeight ?? 120;
+      const gap = 6;
+      const vh = window.innerHeight;
+      const below = vh - tr.bottom - gap;
+      const above = tr.top - gap;
+      const up = below < popH + 8 && above > below;
+      setPopStyle({
+        position: "fixed",
+        left: tr.left,
+        width: tr.width,
+        top: up ? Math.max(8, tr.top - gap - popH) : tr.bottom + gap,
+        right: "auto",
+        zIndex: 1000,
+      });
+    };
+    place();
+    // ukur ulang setelah popup dirender (tinggi sebenarnya)
+    const raf = requestAnimationFrame(place);
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
   }, [open]);
 
   return (
@@ -279,6 +337,7 @@ export function ColorSelect({
       )}
       <div className="color-select">
         <button
+          ref={triggerRef}
           type="button"
           className="color-trigger"
           aria-expanded={open}
@@ -296,25 +355,32 @@ export function ColorSelect({
             />
           </svg>
         </button>
-        {open && (
-          <div className="color-pop">
-            {PALETTE.map((c) => (
-              <button
-                key={c.hex}
-                type="button"
-                title={c.name}
-                className={`color-dot ${
-                  c.hex.toLowerCase() === value.toLowerCase() ? "is-active" : ""
-                }`}
-                style={{ background: c.hex }}
-                onClick={() => {
-                  onChange(c.hex);
-                  setOpen(false);
-                }}
-              />
-            ))}
-          </div>
-        )}
+        {open &&
+          typeof document !== "undefined" &&
+          createPortal(
+            <div
+              ref={popRef}
+              className="color-pop"
+              style={popStyle ?? { position: "fixed", visibility: "hidden", top: 0, left: 0 }}
+            >
+              {PALETTE.map((c) => (
+                <button
+                  key={c.hex}
+                  type="button"
+                  title={c.name}
+                  className={`color-dot ${
+                    c.hex.toLowerCase() === value.toLowerCase() ? "is-active" : ""
+                  }`}
+                  style={{ background: c.hex }}
+                  onClick={() => {
+                    onChange(c.hex);
+                    setOpen(false);
+                  }}
+                />
+              ))}
+            </div>,
+            document.body,
+          )}
       </div>
       {hint && <p className="hint">{hint}</p>}
       {warn && <p className="warn">{warn}</p>}
@@ -326,10 +392,12 @@ export function ColorSelect({
 
 export function UploadBox({
   onData,
+  onImage,
   compact,
   title = "Upload gambar",
 }: {
-  onData: (dataUrl: string) => void;
+  onData?: (dataUrl: string) => void;
+  onImage?: (dataUrl: string) => void;
   compact?: boolean;
   title?: string;
 }) {
@@ -348,7 +416,10 @@ export function UploadBox({
       return;
     }
     setErr(null);
-    onData(await readFileAsDataUrl(file));
+    const cb = onData ?? onImage;
+    if (cb) {
+      cb(await readFileAsDataUrl(file));
+    }
   };
 
   const onDrop = (e: DragEvent) => {

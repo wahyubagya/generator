@@ -37,7 +37,7 @@ export default function SiteFooter() {
             ))}
             <li>
               <Link href="/generator" className="footer-link-highlight">
-                Lihat Semua 9 Generator →
+                Lihat Semua Generator →
               </Link>
             </li>
           </ul>

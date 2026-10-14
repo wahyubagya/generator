@@ -1,11 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useFrame } from "@react-three/fiber";
+import * as THREE from "three";
 import { GeneratorShell, SaveIcon } from "@/components/GeneratorShell";
 import { BulkNames, DesignChips } from "@/components/BulkNames";
 import { KeycapMesh, LegendMesh, keycapTop, useLine, type KeycapShape } from "@/components/models";
 import { ColorSelect, Field, FontPicker, FontPreviewLoader, PriceBox, Slider, TextInput } from "@/components/ui";
 import { Viewport } from "@/components/Viewport";
+import { playMechanicalClick } from "@/lib/audio";
 import { DEFAULT_FONT } from "@/lib/fonts";
 import { extrudeFlat, roundedRectShape, type IconKind } from "@/lib/geometry";
 import { saveDraft, useDesigns, useFont, useToast } from "@/lib/hooks";
@@ -64,7 +67,81 @@ const INITIAL: Design = makeDesign({ name: "", fontId: DEFAULT_FONT, mods: [] },
 
 const SHAPE: KeycapShape = { w: 18, d: 18, h: 9.5, taper: 2, radius: 3.2 };
 
-function ModuleMesh({ m, char, fontId }: { m: Mod; char: string; fontId: string }) {
+function InteractiveModularKeycap({
+  shape,
+  color,
+  line,
+  legendColor,
+  pitch,
+  onSelect,
+}: {
+  shape: KeycapShape;
+  color: string;
+  line: ReturnType<typeof useLine>;
+  legendColor: string;
+  pitch: number;
+  onSelect?: () => void;
+}) {
+  const ref = useRef<THREE.Group>(null);
+  const offset = useRef(0);
+  const target = useRef(0);
+  const [hovered, setHovered] = useState(false);
+
+  useEffect(() => {
+    document.body.style.cursor = hovered ? "pointer" : "default";
+    return () => {
+      document.body.style.cursor = "default";
+    };
+  }, [hovered]);
+
+  useFrame((_, delta) => {
+    offset.current = THREE.MathUtils.damp(offset.current, target.current, 32, delta);
+    if (ref.current) {
+      ref.current.position.y = 13.2 + offset.current;
+    }
+    if (target.current !== 0) target.current = 0;
+  });
+
+  const handleClick = (e: { stopPropagation: () => void }) => {
+    e.stopPropagation();
+    onSelect?.();
+    playMechanicalClick(pitch);
+    target.current = -2.2;
+  };
+
+  return (
+    <group
+      ref={ref}
+      position={[0, 13.2, 0]}
+      onClick={handleClick}
+      onPointerOver={(e) => {
+        e.stopPropagation();
+        setHovered(true);
+      }}
+      onPointerOut={() => setHovered(false)}
+    >
+      <KeycapMesh shape={shape} color={color}>
+        <LegendMesh line={line} depth={0.8} color={legendColor} />
+      </KeycapMesh>
+    </group>
+  );
+}
+
+function ModuleMesh({
+  m,
+  char,
+  fontId,
+  slotIndex,
+  totalSlots,
+  onSelect,
+}: {
+  m: Mod;
+  char: string;
+  fontId: string;
+  slotIndex: number;
+  totalSlots: number;
+  onSelect?: () => void;
+}) {
   const font = useFont(fontId);
   const housing = useMemo(
     () => extrudeFlat([roundedRectShape(26.2, 23.2, 5.5)], 12, { bevel: 0.6, bevelSize: 0.6 }),
@@ -72,16 +149,29 @@ function ModuleMesh({ m, char, fontId }: { m: Mod; char: string; fontId: string 
   );
   const top = keycapTop(SHAPE);
   const line = useLine(font, char, 6.5, top.w * 0.92, m.icon);
+  const pitch = 0.9 + (slotIndex / Math.max(1, totalSlots)) * 0.18;
+
   return (
     <group>
-      <mesh geometry={housing} castShadow receiveShadow>
+      <mesh
+        geometry={housing}
+        castShadow
+        receiveShadow
+        onClick={(e) => {
+          e.stopPropagation();
+          onSelect?.();
+        }}
+      >
         <meshStandardMaterial color={m.housing} roughness={0.6} />
       </mesh>
-      <group position={[0, 13.2, 0]}>
-        <KeycapMesh shape={SHAPE} color={m.key}>
-          <LegendMesh line={line} depth={0.8} color={m.legend} />
-        </KeycapMesh>
-      </group>
+      <InteractiveModularKeycap
+        shape={SHAPE}
+        color={m.key}
+        line={line}
+        legendColor={m.legend}
+        pitch={pitch}
+        onSelect={onSelect}
+      />
     </group>
   );
 }
@@ -166,17 +256,14 @@ export default function ModularClickerGen() {
             <group>
               {d.mods.map((mod, i) => (
                 <group key={i} position={[(i - (d.mods.length - 1) / 2) * MOD_W, 0, 0]}>
-                  <ModuleMesh m={mod} char={d.name[i] ?? ""} fontId={d.fontId} />
-                  <mesh
-                    position={[0, 11, 0]}
-                    visible={false}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelMod(i);
-                    }}
-                  >
-                    <boxGeometry args={[MOD_W, 22, 24]} />
-                  </mesh>
+                  <ModuleMesh
+                    m={mod}
+                    char={d.name[i] ?? ""}
+                    fontId={d.fontId}
+                    slotIndex={i}
+                    totalSlots={d.mods.length}
+                    onSelect={() => setSelMod(i)}
+                  />
                 </group>
               ))}
             </group>

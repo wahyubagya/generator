@@ -5,11 +5,7 @@ import CharacterClickerGen from "@/components/generators/CharacterClickerGen";
 import KeychainClickerGen from "@/components/generators/KeychainClickerGen";
 import ModularClickerGen from "@/components/generators/ModularClickerGen";
 import NameTagGen from "@/components/generators/NameTagGen";
-import KeycapGen from "@/components/generators/KeycapGen";
 import PenClipGen from "@/components/generators/PenClipGen";
-import GridfinityGen from "@/components/generators/GridfinityGen";
-import LithophaneGen from "@/components/generators/LithophaneGen";
-import PiagamLariGen from "@/components/generators/PiagamLariGen";
 
 // Map slugs (both Indonesian from PDF and standard slugs) to components
 const SLUG_MAP: Record<string, {
@@ -21,12 +17,8 @@ const SLUG_MAP: Record<string, {
   "modular-clicker": { component: ModularClickerGen, productSlug: "modular-clicker" },
   "gantungan-nama": { component: NameTagGen, productSlug: "name-tag" },
   "name-tag": { component: NameTagGen, productSlug: "name-tag" },
-  "keycap": { component: KeycapGen, productSlug: "keycap" },
   "clip-nama-alat-tulis": { component: PenClipGen, productSlug: "pen-clip" },
   "pen-clip": { component: PenClipGen, productSlug: "pen-clip" },
-  "gridfinity": { component: GridfinityGen, productSlug: "gridfinity" },
-  "lithophane": { component: LithophaneGen, productSlug: "lithophane" },
-  "piagam-lari": { component: PiagamLariGen, productSlug: "piagam-lari" },
   "bikin-clicker": { component: CharacterClickerGen, productSlug: "character-clicker" },
   "character-clicker": { component: CharacterClickerGen, productSlug: "character-clicker" },
 };

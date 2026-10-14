@@ -12,9 +12,7 @@ export default function GeneratorCatalogPage() {
     { id: "all", label: "Semua Generator" },
     { id: "clicker", label: "Fidget Clicker" },
     { id: "keychain", label: "Gantungan Kunci & Klip" },
-    { id: "accessories", label: "Keycap Keyboard" },
-    { id: "organizer", label: "Sistem Gridfinity" },
-    { id: "display", label: "Display & Lithophane" },
+    { id: "accessories", label: "Klip & Aksesori" },
   ];
 
   const filtered = PRODUCTS.filter((p) => {
