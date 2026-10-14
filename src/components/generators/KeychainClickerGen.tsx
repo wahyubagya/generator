@@ -164,7 +164,7 @@ function Scene({ d }: { d: Design }) {
       ))}
       <mesh
         geometry={eyeletGeo}
-        position={[-total / 2 + 1.2, 2.5, 0]}
+        position={[-total / 2 + 1.2, 0, 0]}
         castShadow
         receiveShadow
       >

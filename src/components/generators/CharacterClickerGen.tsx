@@ -165,7 +165,7 @@ function Scene({ d, onVolume }: { d: Design; onVolume: (v: number) => void }) {
       {eyeletGeo && (
         <mesh
           geometry={eyeletGeo}
-          position={[vectorRelief.top.x, 2.5, vectorRelief.top.z + 1.2]}
+          position={[vectorRelief.top.x, 0, vectorRelief.top.z + 1.2]}
           castShadow
           receiveShadow
         >
