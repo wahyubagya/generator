@@ -1367,19 +1367,74 @@ h1 {
   margin-bottom: 8px;
 }
 
-/* ------------------------------------------------------------- Responsive -- */
+/* ------------------------------------------------------------- Responsive & Mobile Friendly -- */
+
+.gen-mobile-jump,
+.gen-mobile-jump-up {
+  display: none;
+}
 
 @media (max-width: 960px) {
   .gen-grid {
     grid-template-columns: 1fr;
+    gap: 18px;
   }
 
   .stage {
     position: static;
   }
 
+  .gen-stage-col {
+    position: static;
+  }
+
+  .gen-stage-col .viewport,
   .viewport {
-    height: 52vh;
+    height: clamp(260px, 42vh, 340px) !important;
+    min-height: 260px !important;
+  }
+
+  .gen-mobile-jump {
+    display: flex;
+    justify-content: center;
+    margin-top: 8px;
+    margin-bottom: 4px;
+  }
+
+  .gen-mobile-jump-up {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 12px;
+  }
+
+  .mobile-jump-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 18px;
+    border-radius: 999px;
+    font-size: 0.84rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: 1px solid rgba(2, 132, 199, 0.25);
+    background: #ffffff;
+    color: #0284c7;
+    box-shadow: 0 4px 14px rgba(2, 132, 199, 0.12);
+  }
+
+  .mobile-jump-pill:hover,
+  .mobile-jump-pill:active {
+    background: #0284c7;
+    color: #ffffff;
+    transform: translateY(-1px);
+    box-shadow: 0 6px 18px rgba(2, 132, 199, 0.22);
+  }
+
+  .mobile-jump-pill.secondary {
+    background: #f0f9ff;
+    border-color: rgba(14, 165, 233, 0.25);
+    color: #0369a1;
   }
 
   .panel-body {
@@ -1388,6 +1443,197 @@ h1 {
 
   .gen-head {
     flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .gen-head .btn-ghost {
+    align-self: flex-start;
+  }
+}
+
+@media (max-width: 640px) {
+  /* Layout Padding */
+  .site-main {
+    padding: 12px 14px 44px !important;
+  }
+
+  /* Compact Site Header */
+  .site-header {
+    padding: 10px 14px;
+  }
+
+  .header-actions #btn-masuk {
+    display: none !important;
+  }
+
+  .header-actions #btn-mulai-desain {
+    padding: 7px 12px;
+    font-size: 0.8rem;
+  }
+
+  .brand-text {
+    font-size: 1.02rem;
+  }
+
+  .brand-badge {
+    width: 32px;
+    height: 32px;
+  }
+
+  /* Form inputs: min 16px to prevent iOS Safari auto-zoom */
+  input,
+  select,
+  textarea,
+  .input,
+  .textarea {
+    font-size: 16px !important;
+  }
+
+  /* Segments & Mode buttons: touch friendly */
+  .seg,
+  .mode-switch {
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    padding: 4px;
+    gap: 4px;
+  }
+
+  .seg-btn,
+  .mode-btn {
+    min-height: 42px;
+    padding: 8px 12px;
+    font-size: 0.84rem;
+    white-space: nowrap;
+  }
+
+  /* Chips horizontal swipe */
+  .chips {
+    display: flex;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    gap: 6px;
+    padding-bottom: 4px;
+  }
+
+  .chip {
+    min-height: 38px;
+    padding: 6px 14px;
+    white-space: nowrap;
+    font-size: 0.84rem;
+  }
+
+  /* Font Picker */
+  .font-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+
+  .font-card {
+    min-height: 60px;
+    padding: 10px 8px;
+  }
+
+  .font-sample {
+    font-size: 1.25rem;
+  }
+
+  /* Color Select Popup: Bottom Sheet Modal on Mobile */
+  .color-trigger {
+    min-height: 44px;
+    padding: 10px 14px;
+  }
+
+  .color-pop {
+    position: fixed !important;
+    top: auto !important;
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px)) !important;
+    left: 12px !important;
+    right: 12px !important;
+    width: calc(100vw - 24px) !important;
+    max-width: 440px !important;
+    margin: 0 auto !important;
+    grid-template-columns: repeat(6, 1fr) !important;
+    gap: 10px !important;
+    padding: 16px !important;
+    border-radius: 20px !important;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(14, 165, 233, 0.3) !important;
+    background: #ffffff !important;
+    z-index: 99999 !important;
+  }
+
+  .color-dot {
+    min-height: 42px;
+    min-width: 42px;
+  }
+
+  /* Range sliders: comfortable touch target */
+  .range {
+    height: 36px;
+  }
+
+  /* Bulk batch order header */
+  .bulk-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    padding: 12px 14px;
+  }
+
+  .bulk-toggle-btn {
+    width: 100%;
+    justify-content: center;
+    padding: 9px 14px;
+    font-size: 0.82rem;
+  }
+
+  /* Floating WhatsApp button: compact circle on mobile */
+  .floating-wa-btn {
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px)) !important;
+    right: 16px !important;
+    padding: 12px !important;
+    border-radius: 50% !important;
+    width: 48px !important;
+    height: 48px !important;
+    justify-content: center !important;
+    box-shadow: 0 8px 24px rgba(37, 211, 102, 0.35) !important;
+  }
+
+  .floating-wa-btn .wa-text {
+    display: none !important;
+  }
+
+  .floating-wa-btn .wa-pulse {
+    top: 6px !important;
+    left: 6px !important;
+  }
+
+  /* Price summary and order button */
+  .gen-price-card {
+    padding: 16px;
+    border-radius: 16px;
+  }
+
+  .btn {
+    min-height: 46px;
+  }
+
+  .gen-order-actions .btn {
+    min-height: 50px;
+    font-size: 0.96rem;
+  }
+
+  /* Viewport Size & Hint badges */
+  .vp-hint {
+    font-size: 0.7rem;
+    padding: 5px 10px;
+  }
+
+  .vp-size {
+    font-size: 0.72rem;
+    padding: 6px 10px;
   }
 }
 

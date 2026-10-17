@@ -46,12 +46,40 @@ export function GeneratorShell<T extends string = string>({
       </div>
       {beforeGrid}
       <div className="gen-grid">
-        <div className="gen-stage-col">
+        <div className="gen-stage-col" id="gen-stage-col">
           <section className="stage" aria-label="Pratinjau 3D">
             {stage}
           </section>
+          <div className="gen-mobile-jump">
+            <button
+              type="button"
+              className="mobile-jump-pill"
+              onClick={() => {
+                document.getElementById("custom-panel")?.scrollIntoView({ behavior: "smooth" });
+              }}
+            >
+              <span>⚙️ Atur Model & Warna di Bawah</span>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </button>
+          </div>
         </div>
-        <aside className="panel gen-custom-panel" aria-label="Pengaturan desain">
+        <aside className="panel gen-custom-panel" id="custom-panel" aria-label="Pengaturan desain">
+          <div className="gen-mobile-jump-up">
+            <button
+              type="button"
+              className="mobile-jump-pill secondary"
+              onClick={() => {
+                document.getElementById("gen-stage-col")?.scrollIntoView({ behavior: "smooth" });
+              }}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="18 15 12 9 6 15" />
+              </svg>
+              <span>Lihat Pratinjau 3D</span>
+            </button>
+          </div>
           {tabs && tab && onTab && <Tabs tabs={tabs} value={tab} onChange={onTab} />}
           <div className="panel-body">
             {panel}

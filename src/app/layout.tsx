@@ -1,9 +1,16 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Plus_Jakarta_Sans, JetBrains_Mono } from "next/font/google";
 import SiteHeader from "@/components/SiteHeader";
 import SiteFooter from "@/components/SiteFooter";
 import WhatsAppFloatingButton from "@/components/WhatsAppFloatingButton";
 import "./globals.css";
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  themeColor: "#0284c7",
+};
 
 const plusJakartaSans = Plus_Jakarta_Sans({
   variable: "--font-sans",
