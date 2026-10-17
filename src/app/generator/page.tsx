@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { PRODUCTS, Product } from "@/lib/products";
 
 export default function GeneratorCatalogPage() {
@@ -71,42 +72,76 @@ export default function GeneratorCatalogPage() {
       </header>
 
       {/* Grid of Generators */}
-      <div className={`generator-cards-grid ${filtered.length % 2 !== 0 ? "is-odd" : ""}`}>
+      <div className={`generator-cards-grid count-${filtered.length}`}>
         {filtered.length > 0 ? (
-          filtered.map((p: Product) => (
-            <div key={p.slug} className="generator-card" id={`catalog-item-${p.slug}`}>
-              <div className="card-top">
-                <span className="card-product-icon">{p.icon}</span>
-                {p.badge && <span className="card-badge">{p.badge}</span>}
-              </div>
-
-              <div className="card-body">
-                <h2 className="card-title">{p.title}</h2>
-                <p className="card-desc">{p.desc}</p>
-
-                <ul className="card-features">
-                  {p.features.map((f, i) => (
-                    <li key={i}>
-                      <span className="feature-dot">·</span> {f}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              <div className="card-footer">
-                <div className="card-pricing">
-                  <span className="price-label">Mulai dari</span>
-                  <span className="price-val">{p.startingPrice}</span>
+          filtered.map((p: Product, idx: number) => {
+            const isFeatured = Boolean(p.badge);
+            return (
+              <div
+                key={p.slug}
+                className={`generator-card ${isFeatured ? "is-featured" : ""} card-pos-${idx}`}
+                id={`catalog-item-${p.slug}`}
+              >
+                {/* Large 3D Showcase Image Stage */}
+                <div className="card-image-stage">
+                  <Image
+                    src={p.image3d}
+                    alt={p.title}
+                    fill
+                    sizes="(max-width: 680px) 100vw, (max-width: 1080px) 50vw, 33vw"
+                    className="card-3d-showcase-img"
+                    priority={idx < 2}
+                  />
+                  <div className="card-stage-reflection" />
+                  
+                  {p.badge && (
+                    <span className="card-floating-badge">
+                      <span className="badge-sparkle">✦</span>
+                      <span>{p.badge}</span>
+                    </span>
+                  )}
+                  
+                  <span className="card-type-tag">
+                    {p.category === "clicker"
+                      ? "Fidget Clicker"
+                      : p.category === "keychain"
+                      ? "Gantungan"
+                      : "Aksesori"}
+                  </span>
                 </div>
-                <Link
-                  href={p.route || `/${p.slug}`}
-                  className="btn-primary btn-sm btn-glow"
-                >
-                  Buka Generator 3D →
-                </Link>
+
+                <div className="card-content-wrap">
+                  <div className="card-body">
+                    <h2 className="card-title">{p.title}</h2>
+                    <p className="card-desc">{p.desc}</p>
+
+                    <ul className="card-features">
+                      {p.features.map((f, i) => (
+                        <li key={i}>
+                          <span className="feature-check">✓</span>
+                          <span>{f}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="card-footer">
+                    <div className="card-pricing">
+                      <span className="price-label">Mulai dari</span>
+                      <span className="price-val">{p.startingPrice}</span>
+                    </div>
+                    <Link
+                      href={p.route || `/${p.slug}`}
+                      className="btn-open-gen"
+                    >
+                      <span>Buka Generator 3D</span>
+                      <span className="btn-arrow">→</span>
+                    </Link>
+                  </div>
+                </div>
               </div>
-            </div>
-          ))
+            );
+          })
         ) : (
           <div className="empty-catalog-state">
             <span className="empty-icon">🔎</span>

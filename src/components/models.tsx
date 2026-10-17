@@ -12,6 +12,8 @@ import {
 import type { Font } from "opentype.js";
 import type { Relief } from "@/lib/imageRelief";
 import type { VectorReliefResult } from "@/lib/vectorRelief";
+import { clickerHousingGeometries, type ClickerBodyStyle } from "@/lib/clickerProfile";
+import type { LoftRing } from "@/lib/geometry";
 
 /* ---------------------------------------------------------------- Legend -- */
 
@@ -90,14 +92,18 @@ export function keycapTop(s: KeycapShape) {
 export function KeycapMesh({
   shape,
   color,
+  rings: customRings,
   children,
 }: {
   shape: KeycapShape;
   color: string;
+  /** profil loft khusus (mis. keycap low profile 3MF); default dari `shape` */
+  rings?: LoftRing[];
   /** isi diletakkan di permukaan atas (y = tinggi keycap) */
   children?: React.ReactNode;
 }) {
   const { side, cap } = useMemo(() => {
+    if (customRings) return buildKeycapGeometry(customRings, 6);
     const { w, d, h, taper, radius } = shape;
     const fr = (y: number) => y / h;
     const wAt = (y: number, extra = 0) => w - 2 * taper * fr(y) - 2 * extra;
@@ -116,7 +122,7 @@ export function KeycapMesh({
       r: Math.max(0.6, radius - taper * fr(y) * 0.6 - ex * 0.3),
     }));
     return buildKeycapGeometry(rings, 5);
-  }, [shape]);
+  }, [shape, customRings]);
 
   useLayoutEffect(
     () => () => {
@@ -135,6 +141,47 @@ export function KeycapMesh({
         <meshStandardMaterial color={color} roughness={0.55} />
       </mesh>
       <group position={[0, shape.h, 0]}>{children}</group>
+    </group>
+  );
+}
+
+/* ------------------------------------------------------- Clicker housing -- */
+
+/** Housing clicker profil 3MF (n slot). `port` = modul susun dengan celah + lidah. */
+export function ClickerHousing({
+  slots,
+  port = false,
+  bodyStyle = "rounded",
+  color,
+  roughness = 0.6,
+  bumpMap,
+  bumpScale = 2.2,
+  onClick,
+}: {
+  slots: number;
+  port?: boolean;
+  bodyStyle?: ClickerBodyStyle;
+  color: string;
+  roughness?: number;
+  bumpMap?: THREE.Texture | null;
+  bumpScale?: number;
+  onClick?: (e: { stopPropagation: () => void }) => void;
+}) {
+  const geos = useMemo(() => clickerHousingGeometries(slots, { port, bodyStyle }), [slots, port, bodyStyle]);
+  useLayoutEffect(() => () => geos.forEach((g) => g.dispose()), [geos]);
+  return (
+    <group onClick={onClick}>
+      {geos.map((g, i) => (
+        <mesh key={i} geometry={g} castShadow receiveShadow>
+          <meshStandardMaterial
+            key={bumpMap ? "bump" : "plain"}
+            color={color}
+            roughness={roughness}
+            bumpMap={bumpMap ?? undefined}
+            bumpScale={bumpMap ? bumpScale : 0}
+          />
+        </mesh>
+      ))}
     </group>
   );
 }

@@ -5,12 +5,13 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { GeneratorShell, SaveIcon } from "@/components/GeneratorShell";
 import { BulkNames, DesignChips } from "@/components/BulkNames";
-import { KeycapMesh, LegendMesh, keycapTop, useLine, type KeycapShape } from "@/components/models";
-import { Chips, ColorSelect, Field, FontPicker, FontPreviewLoader, PriceBox, TextInput } from "@/components/ui";
+import { ClickerHousing, KeycapMesh, LegendMesh, useLine, type KeycapShape } from "@/components/models";
+import { AccordionItem, Chips, ColorSelect, Field, FontPicker, FontPreviewLoader, PriceBox, TextInput } from "@/components/ui";
 import { Viewport } from "@/components/Viewport";
 import { playMechanicalClick } from "@/lib/audio";
+import { CLICKER, KEY_TOP_W, housingWidth, lowKeycapRings, slotX, type ClickerBodyStyle } from "@/lib/clickerProfile";
 import { DEFAULT_FONT } from "@/lib/fonts";
-import { clickerEyeletShape, extrudeFlat, roundedRectShape } from "@/lib/geometry";
+import { clickerEyeletShape, extrudeFlat } from "@/lib/geometry";
 import { saveDraft, useDesigns, useFont, useToast } from "@/lib/hooks";
 import { lowContrast } from "@/lib/palette";
 import { CLICKER_BASE, CLICKER_EXTRA, clickerPrice, formatRp } from "@/lib/pricing";
@@ -20,6 +21,7 @@ import { openWhatsAppOrder } from "@/lib/whatsapp";
 type Design = {
   text: string;
   fontId: string;
+  bodyStyle?: ClickerBodyStyle;
   texture: string;
   housing: string;
   key: string;
@@ -29,6 +31,7 @@ type Design = {
 const INITIAL: Design = {
   text: "AC",
   fontId: DEFAULT_FONT,
+  bodyStyle: "rounded",
   texture: "polos",
   housing: "#f4f4f2",
   key: "#f2686a",
@@ -36,8 +39,14 @@ const INITIAL: Design = {
 };
 
 const MAX_SLOTS = 10;
-const PITCH = 22;
-const SHAPE: KeycapShape = { w: 16.5, d: 16.5, h: 8.5, taper: 1.8, radius: 3 };
+const KEY_RINGS = lowKeycapRings();
+const SHAPE: KeycapShape = {
+  w: CLICKER.key.base,
+  d: CLICKER.key.base,
+  h: CLICKER.key.h,
+  taper: (CLICKER.key.base - CLICKER.key.top) / 2,
+  radius: CLICKER.key.rBase,
+};
 
 function InteractiveKeycap({
   shape,
@@ -67,7 +76,7 @@ function InteractiveKeycap({
   useFrame((_, delta) => {
     offset.current = THREE.MathUtils.damp(offset.current, target.current, 32, delta);
     if (ref.current) {
-      ref.current.position.y = 11.2 + offset.current;
+      ref.current.position.y = CLICKER.keyY + offset.current;
     }
     if (target.current !== 0) target.current = 0;
   });
@@ -81,7 +90,7 @@ function InteractiveKeycap({
   return (
     <group
       ref={ref}
-      position={[0, 11.2, 0]}
+      position={[0, CLICKER.keyY, 0]}
       onClick={handleClick}
       onPointerOver={(e) => {
         e.stopPropagation();
@@ -89,7 +98,7 @@ function InteractiveKeycap({
       }}
       onPointerOut={() => setHovered(false)}
     >
-      <KeycapMesh shape={shape} color={color}>
+      <KeycapMesh shape={shape} rings={KEY_RINGS} color={color}>
         <LegendMesh line={line} depth={0.8} color={legendColor} />
       </KeycapMesh>
     </group>
@@ -99,51 +108,33 @@ function InteractiveKeycap({
 function Cell({
   d,
   char,
-  tex,
   slotIndex,
   totalSlots,
 }: {
   d: Design;
   char: string;
-  tex: ReturnType<typeof getBumpTexture>;
   slotIndex: number;
   totalSlots: number;
 }) {
   const font = useFont(d.fontId);
-  const housing = useMemo(
-    () => extrudeFlat([roundedRectShape(PITCH, 22, 5.5)], 10, { bevel: 0.6, bevelSize: 0.6 }),
-    [],
-  );
-  const top = keycapTop(SHAPE);
-  const line = useLine(font, char, 6, top.w * 0.92);
+  const line = useLine(font, char, 6, KEY_TOP_W * 0.9);
   const pitch = 0.92 + (slotIndex / Math.max(1, totalSlots)) * 0.16;
 
   return (
-    <group>
-      <mesh geometry={housing} castShadow receiveShadow>
-        <meshStandardMaterial
-          key={tex ? "bump" : "plain"}
-          color={d.housing}
-          roughness={0.62}
-          bumpMap={tex ?? undefined}
-          bumpScale={tex ? 2.2 : 0}
-        />
-      </mesh>
-      <InteractiveKeycap
-        shape={SHAPE}
-        color={d.key}
-        line={line}
-        legendColor={d.legend}
-        pitch={pitch}
-      />
-    </group>
+    <InteractiveKeycap
+      shape={SHAPE}
+      color={d.key}
+      line={line}
+      legendColor={d.legend}
+      pitch={pitch}
+    />
   );
 }
 
 function Scene({ d }: { d: Design }) {
   const n = Math.max(1, Math.min(MAX_SLOTS, d.text.length));
   const tex = useMemo(() => getBumpTexture(d.texture), [d.texture]);
-  const total = n * PITCH;
+  const total = housingWidth(n);
   const eyeletGeo = useMemo(() => {
     const geo = extrudeFlat([clickerEyeletShape(4.8, 2.3, 9.2, 5.6)], 4.2, {
       bevel: 0.4,
@@ -157,9 +148,10 @@ function Scene({ d }: { d: Design }) {
 
   return (
     <group>
+      <ClickerHousing slots={n} bodyStyle={d.bodyStyle ?? "rounded"} color={d.housing} roughness={0.62} bumpMap={tex} />
       {Array.from({ length: n }, (_, i) => (
-        <group key={i} position={[(i - (n - 1) / 2) * PITCH, 0, 0]}>
-          <Cell d={d} char={d.text[i] ?? ""} tex={tex} slotIndex={i} totalSlots={n} />
+        <group key={i} position={[slotX(i, n), 0, 0]}>
+          <Cell d={d} char={d.text[i] ?? ""} slotIndex={i} totalSlots={n} />
         </group>
       ))}
       <mesh
@@ -188,9 +180,16 @@ const TABS: { id: Tab; label: string }[] = [
 ];
 
 export default function KeychainClickerGen() {
-  const D = useDesigns<Design>(INITIAL, 8);
+  const D = useDesigns<Design>(INITIAL, 8, "gantungan-keycap");
   const d = D.current;
-  const [tab, setTab] = useState<Tab>("isi");
+  const [openSec, setOpenSec] = useState({
+    teks: true,
+    casing: false,
+    warna: false,
+  });
+  const toggleSec = (k: keyof typeof openSec) =>
+    setOpenSec((prev) => ({ ...prev, [k]: !prev[k] }));
+
   const [tag, setTag] = useState("Semua");
   const [thumbs, setThumbs] = useState<Record<string, string | null>>({});
   const toast = useToast();
@@ -217,13 +216,9 @@ export default function KeychainClickerGen() {
         title="Gantungan Clicker Nama"
         subtitle="Pilih 1–10 tombol, isi dengan huruf, angka, ikon, atau gambar milikmu."
         teaser={`Mulai ${formatRp(CLICKER_BASE)} · tambah slot ${formatRp(CLICKER_EXTRA)}. Sudah termasuk carabiner ring bulat.`}
-        tabs={TABS}
-        tab={tab}
-        onTab={setTab}
         toast={toast.msg}
         top={
-          <details className="bulk-details">
-            <summary>Pesan banyak nama</summary>
+          <>
             <BulkNames
               title="Gantungan clicker untuk semua nama"
               max={D.max}
@@ -237,7 +232,7 @@ export default function KeychainClickerGen() {
               onSel={D.setSel}
               onRemove={D.remove}
             />
-          </details>
+          </>
         }
         stage={
           <Viewport hint="Klik / tap tombolnya · geser untuk putar" fitKey={`${n}`}>
@@ -245,56 +240,95 @@ export default function KeychainClickerGen() {
           </Viewport>
         }
         panel={
-          <>
-            {tab === "isi" && (
-              <>
-                <Field label="Ketik nama kamu" hint={`Maksimal ${MAX_SLOTS} huruf. Satu huruf otomatis menjadi satu tombol.`}>
-                  <TextInput
-                    value={d.text}
-                    max={MAX_SLOTS}
-                    upper
-                    id="input-keychain-text"
-                    onChange={(text) => D.update({ text })}
-                  />
-                </Field>
-                <Field label="Pilih gaya huruf">
-                  <FontPicker value={d.fontId} sample={d.text || "AC"} onChange={(fontId) => D.update({ fontId })} />
-                </Field>
-                <Field label="Tekstur dinding" hint="Pilih pola yang kamu suka.">
-                  <Chips options={TEXTURE_TAGS} value={tag} onChange={setTag} />
-                  <div className="tex-grid">
-                    {textures.map((w) => (
-                      <button
-                        key={w.id}
-                        id={`tex-${w.id}`}
-                        type="button"
-                        className={`tex-card ${d.texture === w.id ? "is-active" : ""}`}
-                        onClick={() => D.update({ texture: w.id })}
-                      >
-                        <span
-                          className="tex-thumb"
-                          style={thumbs[w.id] ? { backgroundImage: `url(${thumbs[w.id]})` } : undefined}
-                        />
-                        <span>{w.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                </Field>
-              </>
-            )}
-            {tab === "warna" && (
-              <>
-                <ColorSelect label="Dinding tombol" value={d.housing} onChange={(housing) => D.update({ housing })} />
-                <ColorSelect label="Keycap" value={d.key} onChange={(key) => D.update({ key })} />
-                <ColorSelect
-                  label="Huruf"
-                  value={d.legend}
-                  onChange={(legend) => D.update({ legend })}
-                  warn={lowContrast(d.key, d.legend) ? "Kontras rendah — pilih warna yang lebih berbeda." : undefined}
+          <div className="acc-list">
+            <AccordionItem
+              id="acc-teks"
+              title="1. Teks & Gaya Huruf"
+              subtitle="Ketik nama dan pilih font favorit kamu"
+              badge={`${d.text || "Teks"} · ${n} Slot`}
+              isOpen={openSec.teks}
+              onToggle={() => toggleSec("teks")}
+            >
+              <Field label="Ketik nama kamu" hint={`Maksimal ${MAX_SLOTS} huruf. Satu huruf otomatis menjadi satu tombol.`}>
+                <TextInput
+                  value={d.text}
+                  max={MAX_SLOTS}
+                  upper
+                  id="input-keychain-text"
+                  onChange={(text) => D.update({ text })}
                 />
-              </>
-            )}
-          </>
+              </Field>
+              <Field label="Pilih gaya huruf">
+                <FontPicker value={d.fontId} sample={d.text || "AC"} onChange={(fontId) => D.update({ fontId })} />
+              </Field>
+            </AccordionItem>
+
+            <AccordionItem
+              id="acc-casing"
+              title="2. Model Casing & Tekstur"
+              subtitle="Pilih sudut membulat/kotak dan tekstur dinding"
+              badge={`${d.bodyStyle === "standar" ? "Kotak" : "Bulat"} · ${d.texture}`}
+              isOpen={openSec.casing}
+              onToggle={() => toggleSec("casing")}
+            >
+              <Field label="Model body / casing" hint="Pilih sudut casing membulat atau standar kotak">
+                <div className="chips">
+                  <button
+                    type="button"
+                    className={`chip ${d.bodyStyle !== "standar" ? "is-active" : ""}`}
+                    onClick={() => D.update({ bodyStyle: "rounded" })}
+                  >
+                    Bulat (Rounded)
+                  </button>
+                  <button
+                    type="button"
+                    className={`chip ${d.bodyStyle === "standar" ? "is-active" : ""}`}
+                    onClick={() => D.update({ bodyStyle: "standar" })}
+                  >
+                    Standar (Kotak)
+                  </button>
+                </div>
+              </Field>
+              <Field label="Tekstur dinding" hint="Pilih pola dinding tombol yang kamu suka.">
+                <Chips options={TEXTURE_TAGS} value={tag} onChange={setTag} />
+                <div className="tex-grid">
+                  {textures.map((w) => (
+                    <button
+                      key={w.id}
+                      id={`tex-${w.id}`}
+                      type="button"
+                      className={`tex-card ${d.texture === w.id ? "is-active" : ""}`}
+                      onClick={() => D.update({ texture: w.id })}
+                    >
+                      <span
+                        className="tex-thumb"
+                        style={thumbs[w.id] ? { backgroundImage: `url(${thumbs[w.id]})` } : undefined}
+                      />
+                      <span>{w.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </Field>
+            </AccordionItem>
+
+            <AccordionItem
+              id="acc-warna"
+              title="3. Pilihan Warna"
+              subtitle="Kombinasi warna dinding, tombol, dan huruf"
+              badge="Warna"
+              isOpen={openSec.warna}
+              onToggle={() => toggleSec("warna")}
+            >
+              <ColorSelect label="Dinding tombol" value={d.housing} onChange={(housing) => D.update({ housing })} />
+              <ColorSelect label="Keycap" value={d.key} onChange={(key) => D.update({ key })} />
+              <ColorSelect
+                label="Huruf"
+                value={d.legend}
+                onChange={(legend) => D.update({ legend })}
+                warn={lowContrast(d.key, d.legend) ? "Kontras rendah — pilih warna yang lebih berbeda." : undefined}
+              />
+            </AccordionItem>
+          </div>
         }
         foot={
           <>
@@ -317,6 +351,7 @@ export default function KeychainClickerGen() {
                   const waMsg =
                     `Halo Aureate Craft, saya ingin memesan Gantungan Clicker Nama:\n` +
                     `• Teks / Huruf: ${d.text}\n` +
+                    `• Model Casing: ${d.bodyStyle === "standar" ? "Standar (Kotak)" : "Bulat (Rounded Gemas)"}\n` +
                     `• Warna Dinding: ${d.housing}\n` +
                     `• Warna Keycap: ${d.key}\n` +
                     `• Warna Huruf: ${d.legend}\n` +
@@ -336,13 +371,14 @@ export default function KeychainClickerGen() {
                 onClick={() =>
                   toast.show(
                     saveDraft("gantungan-keycap", D.items)
-                      ? "Desain tersimpan di browser ini."
-                      : "Gagal menyimpan desain.",
+                      ? "Draf tersimpan di browser (berlaku 1 hari)."
+                      : "Gagal menyimpan draf.",
                   )
                 }
               >
                 <SaveIcon /> Simpan ke Draft Saja
               </button>
+              <span className="draft-expiry-hint">⏱️ Draf disimpan di browser & berlaku selama 1 hari</span>
             </div>
           </>
         }

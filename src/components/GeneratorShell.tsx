@@ -4,7 +4,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { Tabs, Toast } from "@/components/ui";
 
-export function GeneratorShell<T extends string>({
+export function GeneratorShell<T extends string = string>({
   title,
   subtitle,
   teaser,
@@ -23,9 +23,9 @@ export function GeneratorShell<T extends string>({
   teaser?: string;
   top?: ReactNode;
   beforeGrid?: ReactNode;
-  tabs: { id: T; label: string }[];
-  tab: T;
-  onTab: (t: T) => void;
+  tabs?: { id: T; label: string }[];
+  tab?: T;
+  onTab?: (t: T) => void;
   stage: ReactNode;
   panel: ReactNode;
   foot: ReactNode;
@@ -46,13 +46,21 @@ export function GeneratorShell<T extends string>({
       </div>
       {beforeGrid}
       <div className="gen-grid">
-        <section className="stage" aria-label="Pratinjau 3D">
-          {stage}
-        </section>
-        <aside className="panel" aria-label="Pengaturan desain">
-          <Tabs tabs={tabs} value={tab} onChange={onTab} />
-          <div className="panel-body">{panel}</div>
-          <div className="panel-foot">{foot}</div>
+        <div className="gen-stage-col">
+          <section className="stage" aria-label="Pratinjau 3D">
+            {stage}
+          </section>
+        </div>
+        <aside className="panel gen-custom-panel" aria-label="Pengaturan desain">
+          {tabs && tab && onTab && <Tabs tabs={tabs} value={tab} onChange={onTab} />}
+          <div className="panel-body">
+            {panel}
+            {foot && (
+              <section className="gen-price-card" aria-label="Ringkasan Pesanan & Harga">
+                {foot}
+              </section>
+            )}
+          </div>
         </aside>
       </div>
       <Toast msg={toast} />

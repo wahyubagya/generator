@@ -9,6 +9,64 @@ import { PALETTE, colorName } from "@/lib/palette";
 import { readFileAsDataUrl } from "@/lib/hooks";
 import { formatRp, marketplacePrice } from "@/lib/pricing";
 
+/* ------------------------------------------------------------ Accordion -- */
+
+export function AccordionItem({
+  id,
+  title,
+  subtitle,
+  badge,
+  icon,
+  isOpen,
+  onToggle,
+  children,
+}: {
+  id?: string;
+  title: string;
+  subtitle?: string;
+  badge?: ReactNode;
+  icon?: ReactNode;
+  isOpen: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className={`acc-item ${isOpen ? "is-open" : ""}`} id={id}>
+      <button
+        type="button"
+        className="acc-header"
+        onClick={onToggle}
+        aria-expanded={isOpen}
+      >
+        <div className="acc-header-left">
+          {icon && <span className="acc-icon">{icon}</span>}
+          <div className="acc-title-wrap">
+            <span className="acc-title">{title}</span>
+            {subtitle && <span className="acc-sub">{subtitle}</span>}
+          </div>
+        </div>
+        <div className="acc-header-right">
+          {badge && <span className="acc-badge">{badge}</span>}
+          <svg
+            className={`acc-chevron ${isOpen ? "is-rotated" : ""}`}
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </div>
+      </button>
+      {isOpen && <div className="acc-content">{children}</div>}
+    </div>
+  );
+}
+
 /* ----------------------------------------------------------------- Tabs -- */
 
 export function Tabs<T extends string>({

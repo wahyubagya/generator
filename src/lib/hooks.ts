@@ -54,12 +54,83 @@ export function useReliefSource(url: string | undefined, maxSide = 110) {
   };
 }
 
+/** Waktu kedaluwarsa draf: 1 hari (24 jam) dalam milidetik */
+export const DRAFT_TTL_MS = 24 * 60 * 60 * 1000;
+
+export interface DraftPayload<T = unknown> {
+  data: T;
+  savedAt: number;
+  expiresAt: number;
+}
+
+export function saveDraft(
+  slug: string,
+  data: unknown,
+  ttlMs: number = DRAFT_TTL_MS
+): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const payload: DraftPayload = {
+      data,
+      savedAt: Date.now(),
+      expiresAt: Date.now() + ttlMs,
+    };
+    localStorage.setItem(`forma:${slug}`, JSON.stringify(payload));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function loadDraft<T>(slug: string): T | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(`forma:${slug}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+
+    // Cek format payload dengan expiresAt
+    if (parsed && typeof parsed === "object" && "expiresAt" in parsed && "data" in parsed) {
+      if (Date.now() > parsed.expiresAt) {
+        // Draf sudah lewat 1 hari -> bersihkan dari penyimpanan
+        localStorage.removeItem(`forma:${slug}`);
+        return null;
+      }
+      return parsed.data as T;
+    }
+
+    // Format legacy tanpa expiresAt -> hapus agar sesuai aturan 1 hari
+    localStorage.removeItem(`forma:${slug}`);
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function clearDraft(slug: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.removeItem(`forma:${slug}`);
+  } catch {
+    // ignore
+  }
+}
+
 /** Daftar desain (mode "untuk semua nama"): item pertama jadi acuan. */
-export function useDesigns<T>(initial: T, max = 8) {
+export function useDesigns<T>(initial: T, max = 8, draftSlug?: string) {
   const [items, setItems] = useState<T[]>([initial]);
   const [sel, setSel] = useState(0);
   const idx = Math.min(sel, items.length - 1);
   const current = items[idx];
+
+  // Muat draf tersimpan jika masih berlaku (< 1 hari)
+  useEffect(() => {
+    if (!draftSlug) return;
+    const draft = loadDraft<T[]>(draftSlug);
+    if (draft && Array.isArray(draft) && draft.length > 0) {
+      setItems(draft);
+    }
+  }, [draftSlug]);
 
   const update = useCallback(
     (patch: Partial<T>) =>
@@ -109,15 +180,6 @@ export function useToast() {
     [],
   );
   return { msg, show };
-}
-
-export function saveDraft(slug: string, data: unknown): boolean {
-  try {
-    localStorage.setItem(`forma:${slug}`, JSON.stringify(data));
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 export function readFileAsDataUrl(file: File): Promise<string> {

@@ -1,23 +1,24 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { GeneratorShell, SaveIcon } from "@/components/GeneratorShell";
 import { BulkNames, DesignChips } from "@/components/BulkNames";
-import { KeycapMesh, LegendMesh, keycapTop, useLine, type KeycapShape } from "@/components/models";
-import { ColorSelect, Field, FontPicker, FontPreviewLoader, PriceBox, Slider, TextInput } from "@/components/ui";
+import { ClickerHousing, KeycapMesh, LegendMesh, useLine, type KeycapShape } from "@/components/models";
+import { AccordionItem, ColorSelect, Field, FontPicker, FontPreviewLoader, PriceBox, Slider, TextInput } from "@/components/ui";
 import { Viewport } from "@/components/Viewport";
 import { playMechanicalClick } from "@/lib/audio";
+import { CLICKER, KEY_TOP_W, lowKeycapRings, type ClickerBodyStyle } from "@/lib/clickerProfile";
 import { DEFAULT_FONT } from "@/lib/fonts";
-import { extrudeFlat, roundedRectShape, type IconKind } from "@/lib/geometry";
+import { type IconKind } from "@/lib/geometry";
 import { saveDraft, useDesigns, useFont, useToast } from "@/lib/hooks";
 import { lowContrast } from "@/lib/palette";
 import { CLICKER_BASE, CLICKER_EXTRA, clickerPrice, formatRp } from "@/lib/pricing";
 import { openWhatsAppOrder } from "@/lib/whatsapp";
 
 type Mod = { icon: IconKind | null; housing: string; key: string; legend: string };
-type Design = { name: string; fontId: string; mods: Mod[] };
+type Design = { name: string; fontId: string; bodyStyle?: ClickerBodyStyle; mods: Mod[] };
 
 const PAIRS: [string, string][] = [
   ["#f9a8c0", "#d9363e"],
@@ -35,7 +36,8 @@ const newMod = (i: number): Mod => ({
 });
 
 const MAX_SLOTS = 10;
-const MOD_W = 26.8;
+/** jarak antar modul: 1×1 housing persis menyatu dengan sambungan port */
+const MOD_W = CLICKER.cell;
 
 const ICON_LABEL: { id: IconKind | null; label: string }[] = [
   { id: null, label: "Aa" },
@@ -63,9 +65,16 @@ function makeDesign(base: Design, name: string): Design {
   };
 }
 
-const INITIAL: Design = makeDesign({ name: "", fontId: DEFAULT_FONT, mods: [] }, "AC3");
+const INITIAL: Design = makeDesign({ name: "", fontId: DEFAULT_FONT, bodyStyle: "rounded", mods: [] }, "AC3");
 
-const SHAPE: KeycapShape = { w: 18, d: 18, h: 9.5, taper: 2, radius: 3.2 };
+const KEY_RINGS = lowKeycapRings();
+const SHAPE: KeycapShape = {
+  w: CLICKER.key.base,
+  d: CLICKER.key.base,
+  h: CLICKER.key.h,
+  taper: (CLICKER.key.base - CLICKER.key.top) / 2,
+  radius: CLICKER.key.rBase,
+};
 
 function InteractiveModularKeycap({
   shape,
@@ -97,7 +106,7 @@ function InteractiveModularKeycap({
   useFrame((_, delta) => {
     offset.current = THREE.MathUtils.damp(offset.current, target.current, 32, delta);
     if (ref.current) {
-      ref.current.position.y = 13.2 + offset.current;
+      ref.current.position.y = CLICKER.keyY + offset.current;
     }
     if (target.current !== 0) target.current = 0;
   });
@@ -112,7 +121,7 @@ function InteractiveModularKeycap({
   return (
     <group
       ref={ref}
-      position={[0, 13.2, 0]}
+      position={[0, CLICKER.keyY, 0]}
       onClick={handleClick}
       onPointerOver={(e) => {
         e.stopPropagation();
@@ -120,7 +129,7 @@ function InteractiveModularKeycap({
       }}
       onPointerOut={() => setHovered(false)}
     >
-      <KeycapMesh shape={shape} color={color}>
+      <KeycapMesh shape={shape} rings={KEY_RINGS} color={color}>
         <LegendMesh line={line} depth={0.8} color={legendColor} />
       </KeycapMesh>
     </group>
@@ -131,6 +140,7 @@ function ModuleMesh({
   m,
   char,
   fontId,
+  bodyStyle = "rounded",
   slotIndex,
   totalSlots,
   onSelect,
@@ -138,32 +148,27 @@ function ModuleMesh({
   m: Mod;
   char: string;
   fontId: string;
+  bodyStyle?: ClickerBodyStyle;
   slotIndex: number;
   totalSlots: number;
   onSelect?: () => void;
 }) {
   const font = useFont(fontId);
-  const housing = useMemo(
-    () => extrudeFlat([roundedRectShape(26.2, 23.2, 5.5)], 12, { bevel: 0.6, bevelSize: 0.6 }),
-    [],
-  );
-  const top = keycapTop(SHAPE);
-  const line = useLine(font, char, 6.5, top.w * 0.92, m.icon);
+  const line = useLine(font, m.icon ? "" : char, 6.5, KEY_TOP_W * 0.9, m.icon);
   const pitch = 0.9 + (slotIndex / Math.max(1, totalSlots)) * 0.18;
 
   return (
     <group>
-      <mesh
-        geometry={housing}
-        castShadow
-        receiveShadow
+      <ClickerHousing
+        slots={1}
+        port
+        bodyStyle={bodyStyle}
+        color={m.housing}
         onClick={(e) => {
           e.stopPropagation();
           onSelect?.();
         }}
-      >
-        <meshStandardMaterial color={m.housing} roughness={0.6} />
-      </mesh>
+      />
       <InteractiveModularKeycap
         shape={SHAPE}
         color={m.key}
@@ -184,13 +189,21 @@ const TABS: { id: Tab; label: string }[] = [
 ];
 
 export default function ModularClickerGen() {
-  const D = useDesigns<Design>(INITIAL, 8);
+  const D = useDesigns<Design>(INITIAL, 8, "modular-clicker");
   const d = D.current;
-  const [tab, setTab] = useState<Tab>("nama");
   const [selMod, setSelMod] = useState(0);
   const toast = useToast();
-  const mi = Math.min(selMod, d.mods.length - 1);
-  const m = d.mods[mi];
+  const mi = Math.min(selMod, Math.max(0, d.mods.length - 1));
+  const m = d.mods[mi] || d.mods[0];
+
+  const [openSec, setOpenSec] = useState({
+    teks: true,
+    modul: false,
+    jumlah: false,
+    warna: false,
+  });
+  const toggleSec = (k: keyof typeof openSec) =>
+    setOpenSec((prev) => ({ ...prev, [k]: !prev[k] }));
 
   const setName = (raw: string) => {
     const name = raw.toUpperCase().slice(0, MAX_SLOTS);
@@ -227,9 +240,6 @@ export default function ModularClickerGen() {
         title="Clicker Nama Susun"
         subtitle="Gabungkan 1–10 tombol. Tap bagian yang ingin kamu ubah warnanya."
         teaser={`1 slot ${formatRp(CLICKER_BASE)} · setiap tambahan slot naik ${formatRp(CLICKER_EXTRA)}.`}
-        tabs={TABS}
-        tab={tab}
-        onTab={setTab}
         toast={toast.msg}
         top={
           <>
@@ -260,6 +270,7 @@ export default function ModularClickerGen() {
                     m={mod}
                     char={d.name[i] ?? ""}
                     fontId={d.fontId}
+                    bodyStyle={d.bodyStyle ?? "rounded"}
                     slotIndex={i}
                     totalSlots={d.mods.length}
                     onSelect={() => setSelMod(i)}
@@ -270,62 +281,109 @@ export default function ModularClickerGen() {
           </Viewport>
         }
         panel={
-          <>
-            {tab === "nama" && (
-              <>
-                <Field label="Ketik nama cepat" hint="Nama otomatis menjadi satu huruf per clicker. Setelah itu setiap modul masih bisa diganti jadi ikon.">
-                  <TextInput value={d.name} max={MAX_SLOTS} upper id="input-clicker-name" onChange={setName} />
-                </Field>
-                <Field label="Pilih gaya huruf">
-                  <FontPicker value={d.fontId} sample={d.name || "AC"} onChange={(fontId) => D.update({ fontId })} />
-                </Field>
-                <Field label={`Isi modul ${mi + 1}`}>
-                  {ModChips}
-                  <div className="icon-grid">
-                    {ICON_LABEL.map((o) => (
-                      <button
-                        key={o.id ?? "huruf"}
-                        type="button"
-                        className={`icon-btn ${m.icon === o.id ? "is-active" : ""}`}
-                        title={o.id ?? "Huruf"}
-                        onClick={() => patchMod({ icon: o.id })}
-                      >
-                        {o.label}
-                      </button>
-                    ))}
-                  </div>
-                </Field>
-              </>
-            )}
-            {tab === "jumlah" && (
-              <>
-                <Slider label="Jumlah tombol" value={d.mods.length} min={1} max={MAX_SLOTS} unit="slot" onChange={setCount} id="slider-slots" />
-                <p className="hint">
-                  Slot tanpa huruf akan jadi tombol kosong. Huruf diambil dari nama di tab sebelumnya.
-                </p>
-              </>
-            )}
-            {tab === "warna" && (
-              <>
-                <Field label={`Modul ${mi + 1}`}>{ModChips}</Field>
-                <ColorSelect label="Rumah tombol" value={m.housing} onChange={(housing) => patchMod({ housing })} />
-                <ColorSelect label="Keycap" value={m.key} onChange={(key) => patchMod({ key })} />
-                <ColorSelect
-                  label="Huruf / ikon"
-                  value={m.legend}
-                  onChange={(legend) => patchMod({ legend })}
-                  warn={lowContrast(m.key, m.legend) ? "Kontras rendah — pilih warna yang lebih berbeda." : undefined}
-                />
-                <button
-                  type="button"
-                  className="btn btn-ghost"
-                  onClick={() => D.update({ mods: d.mods.map(() => ({ ...m })) })}
-                >
-                  Terapkan warna ini ke semua modul
-                </button>
-              </>
-            )}
-          </>
+          <div className="acc-list">
+            <AccordionItem
+              id="acc-teks"
+              title="1. Nama, Font & Model Body"
+              subtitle="Ketik nama, pilih font, dan bentuk sudut casing"
+              badge={`${d.name || "Nama"} · ${d.bodyStyle === "standar" ? "Kotak" : "Bulat"}`}
+              isOpen={openSec.teks}
+              onToggle={() => toggleSec("teks")}
+            >
+              <Field label="Ketik nama cepat" hint="Nama otomatis menjadi satu huruf per clicker. Setelah itu setiap modul masih bisa diganti jadi ikon.">
+                <TextInput value={d.name} max={MAX_SLOTS} upper id="input-clicker-name" onChange={setName} />
+              </Field>
+              <Field label="Pilih gaya huruf">
+                <FontPicker value={d.fontId} sample={d.name || "AC"} onChange={(fontId) => D.update({ fontId })} />
+              </Field>
+              <Field label="Model body / casing" hint="Pilih sudut casing membulat atau standar kotak">
+                <div className="chips">
+                  <button
+                    type="button"
+                    className={`chip ${d.bodyStyle !== "standar" ? "is-active" : ""}`}
+                    onClick={() => D.update({ bodyStyle: "rounded" })}
+                  >
+                    Bulat (Rounded)
+                  </button>
+                  <button
+                    type="button"
+                    className={`chip ${d.bodyStyle === "standar" ? "is-active" : ""}`}
+                    onClick={() => D.update({ bodyStyle: "standar" })}
+                  >
+                    Standar (Kotak)
+                  </button>
+                </div>
+              </Field>
+            </AccordionItem>
+
+            <AccordionItem
+              id="acc-modul"
+              title="2. Isi Tiap Modul (Huruf / Ikon)"
+              subtitle="Ganti huruf modul tertentu menjadi ikon lucu"
+              badge={`Modul ${mi + 1}: ${m.icon ? `Ikon ${m.icon}` : d.name[mi] || "Huruf"}`}
+              isOpen={openSec.modul}
+              onToggle={() => toggleSec("modul")}
+            >
+              <Field label={`Pilih modul yang ingin diubah (Modul ${mi + 1})`}>
+                {ModChips}
+              </Field>
+              <Field label="Pilih ikon atau huruf">
+                <div className="icon-grid">
+                  {ICON_LABEL.map((o) => (
+                    <button
+                      key={o.id ?? "huruf"}
+                      type="button"
+                      className={`icon-btn ${m.icon === o.id ? "is-active" : ""}`}
+                      title={o.id ?? "Huruf"}
+                      onClick={() => patchMod({ icon: o.id })}
+                    >
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+              </Field>
+            </AccordionItem>
+
+            <AccordionItem
+              id="acc-jumlah"
+              title="3. Jumlah Tombol (Panjang)"
+              subtitle="Atur jumlah slot rangkaian clicker (1–10 slot)"
+              badge={`${d.mods.length} Tombol`}
+              isOpen={openSec.jumlah}
+              onToggle={() => toggleSec("jumlah")}
+            >
+              <Slider label="Jumlah tombol" value={d.mods.length} min={1} max={MAX_SLOTS} unit="slot" onChange={setCount} id="slider-slots" />
+              <p className="hint">
+                Slot tanpa huruf akan jadi tombol kosong. Huruf diambil dari nama di bagian pertama.
+              </p>
+            </AccordionItem>
+
+            <AccordionItem
+              id="acc-warna"
+              title="4. Pilihan Warna Modul"
+              subtitle="Atur warna rumah tombol, keycap, dan karakter"
+              badge={`Modul ${mi + 1}`}
+              isOpen={openSec.warna}
+              onToggle={() => toggleSec("warna")}
+            >
+              <Field label={`Pilih modul yang diwarnai (Modul ${mi + 1})`}>{ModChips}</Field>
+              <ColorSelect label="Rumah tombol" value={m.housing} onChange={(housing) => patchMod({ housing })} />
+              <ColorSelect label="Keycap" value={m.key} onChange={(key) => patchMod({ key })} />
+              <ColorSelect
+                label="Huruf / ikon"
+                value={m.legend}
+                onChange={(legend) => patchMod({ legend })}
+                warn={lowContrast(m.key, m.legend) ? "Kontras rendah — pilih warna yang lebih berbeda." : undefined}
+              />
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => D.update({ mods: d.mods.map(() => ({ ...m })) })}
+              >
+                Terapkan warna ini ke semua modul
+              </button>
+            </AccordionItem>
+          </div>
         }
         foot={
           <>
@@ -351,6 +409,7 @@ export default function ModularClickerGen() {
                   const waMsg =
                     `Halo Aureate Craft, saya ingin memesan Clicker Nama Susun (Modular):\n` +
                     `• Rangkaian Nama: ${d.name}\n` +
+                    `• Model Casing: ${d.bodyStyle === "standar" ? "Standar (Kotak)" : "Bulat (Rounded Gemas)"}\n` +
                     `• Jumlah Tombol: ${d.mods.length} Modul\n` +
                     `• Konfigurasi Tiap Modul:\n• ${modulesSummary}\n` +
                     `• Total Estimasi: ${formatRp(total)}\n` +
@@ -367,13 +426,14 @@ export default function ModularClickerGen() {
                 onClick={() =>
                   toast.show(
                     saveDraft("modular-clicker", D.items)
-                      ? "Desain tersimpan di browser ini."
-                      : "Gagal menyimpan desain.",
+                      ? "Draf tersimpan di browser (berlaku 1 hari)."
+                      : "Gagal menyimpan draf.",
                   )
                 }
               >
                 <SaveIcon /> Simpan ke Draft Saja
               </button>
+              <span className="draft-expiry-hint">⏱️ Draf disimpan di browser & berlaku selama 1 hari</span>
             </div>
           </>
         }

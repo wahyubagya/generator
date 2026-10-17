@@ -5,7 +5,7 @@ import type * as THREE from "three";
 import { GeneratorShell, IconImage, IconText, ModeSwitch, SaveIcon } from "@/components/GeneratorShell";
 import { BulkNames, DesignChips } from "@/components/BulkNames";
 import { LegendMesh, VectorReliefMesh, useLine } from "@/components/models";
-import { ColorSelect, Field, FontPicker, FontPreviewLoader, PriceBox, Segmented, Slider, TextInput, UploadBox } from "@/components/ui";
+import { AccordionItem, ColorSelect, Field, FontPicker, FontPreviewLoader, PriceBox, Segmented, Slider, TextInput, UploadBox } from "@/components/ui";
 import { Viewport } from "@/components/Viewport";
 import { DEFAULT_FONT } from "@/lib/fonts";
 import { annulusShape, extrudeFlat, mergeGeos, outerOnly, roundedRectShape, type Line } from "@/lib/geometry";
@@ -170,18 +170,16 @@ function ImageTag({ d, onVolume }: { d: Design; onVolume: (v: number) => void })
   );
 }
 
-type Tab = "desain" | "bentuk" | "warna" | "timbul";
-const TABS: { id: Tab; label: string }[] = [
-  { id: "desain", label: "Desain" },
-  { id: "bentuk", label: "Bentuk" },
-  { id: "warna", label: "Warna" },
-  { id: "timbul", label: "Timbul" },
-];
-
 export default function NameTagGen() {
-  const D = useDesigns<Design>(INITIAL, 8);
+  const D = useDesigns<Design>(INITIAL, 8, "gantungan-nama");
   const d = D.current;
-  const [tab, setTab] = useState<Tab>("desain");
+  const [openSec, setOpenSec] = useState<Record<string, boolean>>({
+    desain: true,
+    bentuk: false,
+    warna: false,
+    timbul: false,
+  });
+  const toggleSec = (sec: string) => setOpenSec((prev) => ({ ...prev, [sec]: !prev[sec] }));
   const [volume, setVolume] = useState(0);
   const [priced, setPriced] = useState<{ key: string; price: number; grams: number } | null>(null);
   const toast = useToast();
@@ -212,9 +210,6 @@ export default function NameTagGen() {
       <GeneratorShell
         title="Gantungan Nama & Logo"
         subtitle="Buat dari nama atau gambar sendiri, lalu lihat hasil 3D sebelum pesan."
-        tabs={TABS}
-        tab={tab}
-        onTab={setTab}
         toast={toast.msg}
         top={
           <>
@@ -249,93 +244,119 @@ export default function NameTagGen() {
           </Viewport>
         }
         panel={
-          <>
-            {tab === "desain" && d.mode === "text" && (
-              <>
-                <Field label="Nama yang dicetak" hint="Maksimal 16 karakter.">
-                  <TextInput value={d.text} max={16} id="input-nametag-text" onChange={(text) => D.update({ text })} />
-                </Field>
-                <Field label="Pilih gaya huruf">
-                  <FontPicker value={d.fontId} sample={d.text || "NAMA"} onChange={(fontId) => D.update({ fontId })} />
-                </Field>
-              </>
-            )}
-            {tab === "desain" && d.mode === "image" && (
-              <>
-                <Field label="Logo / gambar" hint="Latar polos dan kontras tinggi memberi hasil terbaik. Maks. 3 warna.">
-                  <UploadBox compact title={d.imageUrl ? "Ganti gambar" : "Upload gambar"} onData={(imageUrl) => D.update({ imageUrl, imgOverrides: {} })} />
-                </Field>
-                <Slider label="Lebar gambar" value={d.imgWidth} min={30} max={90} step={1} onChange={(imgWidth) => D.update({ imgWidth })} />
-                <Field label="Jumlah warna">
-                  <Segmented
-                    value={d.imgColors}
-                    onChange={(imgColors) => D.update({ imgColors, imgOverrides: {} })}
-                    options={[
-                      { id: 1, label: "1" },
-                      { id: 2, label: "2" },
-                      { id: 3, label: "3" },
-                    ]}
-                  />
-                </Field>
-              </>
-            )}
-            {tab === "bentuk" && (
-              <>
-                {d.mode === "text" && (
-                  <Field label="Bentuk alas">
+          <div className="acc-list">
+            <AccordionItem
+              id="acc-desain"
+              title="1. Desain & Konten"
+              subtitle={d.mode === "text" ? `Teks: "${d.text}"` : "Upload Gambar & Warna"}
+              badge="Konten"
+              isOpen={openSec.desain}
+              onToggle={() => toggleSec("desain")}
+            >
+              {d.mode === "text" ? (
+                <>
+                  <Field label="Nama yang dicetak" hint="Maksimal 16 karakter.">
+                    <TextInput value={d.text} max={16} id="input-nametag-text" onChange={(text) => D.update({ text })} />
+                  </Field>
+                  <Field label="Pilih gaya huruf">
+                    <FontPicker value={d.fontId} sample={d.text || "NAMA"} onChange={(fontId) => D.update({ fontId })} />
+                  </Field>
+                </>
+              ) : (
+                <>
+                  <Field label="Logo / gambar" hint="Latar polos dan kontras tinggi memberi hasil terbaik. Maks. 3 warna.">
+                    <UploadBox compact title={d.imageUrl ? "Ganti gambar" : "Upload gambar"} onData={(imageUrl) => D.update({ imageUrl, imgOverrides: {} })} />
+                  </Field>
+                  <Slider label="Lebar gambar" value={d.imgWidth} min={30} max={90} step={1} onChange={(imgWidth) => D.update({ imgWidth })} />
+                  <Field label="Jumlah warna">
                     <Segmented
-                      value={d.shape}
-                      onChange={(shape) => D.update({ shape })}
+                      value={d.imgColors}
+                      onChange={(imgColors) => D.update({ imgColors, imgOverrides: {} })}
                       options={[
-                        { id: "outline", label: "Ikuti huruf" },
-                        { id: "kotak", label: "Kotak" },
-                        { id: "kapsul", label: "Kapsul" },
+                        { id: 1, label: "1" },
+                        { id: 2, label: "2" },
+                        { id: 3, label: "3" },
                       ]}
                     />
                   </Field>
-                )}
-                <Slider label="Lebar tepi alas" value={d.outline} min={d.mode === "image" ? 0 : 1} max={5} step={0.2} onChange={(outline) => D.update({ outline })} />
-                <Field label="Posisi ring gantungan">
+                </>
+              )}
+            </AccordionItem>
+
+            <AccordionItem
+              id="acc-bentuk"
+              title="2. Bentuk & Dimensi Tag"
+              subtitle={`Bentuk: ${d.mode === "text" ? d.shape : "Sesuai gambar"} · Ring: ${ringValue}`}
+              badge="Bentuk"
+              isOpen={openSec.bentuk}
+              onToggle={() => toggleSec("bentuk")}
+            >
+              {d.mode === "text" && (
+                <Field label="Bentuk alas">
                   <Segmented
-                    value={ringValue}
-                    onChange={(ring) => D.update({ ring: ring as Design["ring"] })}
-                    options={ringChoices}
+                    value={d.shape}
+                    onChange={(shape) => D.update({ shape })}
+                    options={[
+                      { id: "outline", label: "Ikuti huruf" },
+                      { id: "kotak", label: "Kotak" },
+                      { id: "kapsul", label: "Kapsul" },
+                    ]}
                   />
                 </Field>
-              </>
-            )}
-            {tab === "warna" && (
-              <>
-                <ColorSelect label="Warna alas" value={d.baseColor} onChange={(baseColor) => D.update({ baseColor })} />
-                {d.mode === "text" ? (
+              )}
+              <Slider label="Lebar tepi alas" value={d.outline} min={d.mode === "image" ? 0 : 1} max={5} step={0.2} onChange={(outline) => D.update({ outline })} />
+              <Field label="Posisi ring gantungan">
+                <Segmented
+                  value={ringValue}
+                  onChange={(ring) => D.update({ ring: ring as Design["ring"] })}
+                  options={ringChoices}
+                />
+              </Field>
+            </AccordionItem>
+
+            <AccordionItem
+              id="acc-warna"
+              title="3. Pilihan Warna"
+              subtitle="Alas & tulisan/gambar"
+              badge="Warna"
+              isOpen={openSec.warna}
+              onToggle={() => toggleSec("warna")}
+            >
+              <ColorSelect label="Warna alas" value={d.baseColor} onChange={(baseColor) => D.update({ baseColor })} />
+              {d.mode === "text" ? (
+                <ColorSelect
+                  label="Warna tulisan"
+                  value={d.textColor}
+                  onChange={(textColor) => D.update({ textColor })}
+                  warn={lowContrast(d.baseColor, d.textColor) ? "Kontras rendah — pilih warna yang lebih berbeda." : undefined}
+                />
+              ) : palette.length ? (
+                palette.map((c, i) => (
                   <ColorSelect
-                    label="Warna tulisan"
-                    value={d.textColor}
-                    onChange={(textColor) => D.update({ textColor })}
-                    warn={lowContrast(d.baseColor, d.textColor) ? "Kontras rendah — pilih warna yang lebih berbeda." : undefined}
+                    key={i}
+                    label={`Warna gambar ${i + 1}`}
+                    value={d.imgOverrides[i] ?? c}
+                    onChange={(hex) => D.update({ imgOverrides: { ...d.imgOverrides, [i]: hex } })}
                   />
-                ) : palette.length ? (
-                  palette.map((c, i) => (
-                    <ColorSelect
-                      key={i}
-                      label={`Warna gambar ${i + 1}`}
-                      value={d.imgOverrides[i] ?? c}
-                      onChange={(hex) => D.update({ imgOverrides: { ...d.imgOverrides, [i]: hex } })}
-                    />
-                  ))
-                ) : (
-                  <p className="hint">Upload gambar dulu di tab Desain.</p>
-                )}
-              </>
-            )}
-            {tab === "timbul" && (
-              <>
-                <Slider label={d.mode === "text" ? "Tinggi tulisan timbul" : "Tinggi lapisan gambar"} value={d.reliefH} min={0.6} max={3} step={0.2} onChange={(reliefH) => D.update({ reliefH })} />
-                <Slider label="Tebal alas" value={d.baseThick} min={1.6} max={5} step={0.2} onChange={(baseThick) => D.update({ baseThick })} />
-                <p className="hint">Tulisan lebih tinggi lebih mudah diraba, tetapi memakai filamen lebih banyak.</p>
-              </>
-            )}
-          </>
+                ))
+              ) : (
+                <p className="hint">Upload gambar dulu pada bagian 1 (Desain & Konten).</p>
+              )}
+            </AccordionItem>
+
+            <AccordionItem
+              id="acc-timbul"
+              title="4. Ketebalan Timbul & Relief"
+              subtitle={`Timbul: ${d.reliefH}mm · Alas: ${d.baseThick}mm`}
+              badge="Relief"
+              isOpen={openSec.timbul}
+              onToggle={() => toggleSec("timbul")}
+            >
+              <Slider label={d.mode === "text" ? "Tinggi tulisan timbul" : "Tinggi lapisan gambar"} value={d.reliefH} min={0.6} max={3} step={0.2} onChange={(reliefH) => D.update({ reliefH })} />
+              <Slider label="Tebal alas" value={d.baseThick} min={1.6} max={5} step={0.2} onChange={(baseThick) => D.update({ baseThick })} />
+              <p className="hint">Tulisan lebih tinggi lebih mudah diraba, tetapi memakai filamen lebih banyak.</p>
+            </AccordionItem>
+          </div>
         }
         foot={
           <>
@@ -394,11 +415,12 @@ export default function NameTagGen() {
                   const est = estimateByVolume(volume, colors);
                   setPriced({ key, price: est.price, grams: est.grams });
                   saveDraft("gantungan-nama", D.items);
-                  toast.show(`Estimasi harga ${formatRp(est.price)}. Desain tersimpan di browser ini.`);
+                  toast.show(`Estimasi harga ${formatRp(est.price)}. Draf tersimpan di browser (berlaku 1 hari).`);
                 }}
               >
                 <SaveIcon /> Simpan ke Draft Saja
               </button>
+              <span className="draft-expiry-hint">⏱️ Draf disimpan di browser & berlaku selama 1 hari</span>
             </div>
           </>
         }

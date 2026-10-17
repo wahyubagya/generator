@@ -4,11 +4,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { GeneratorShell, SaveIcon } from "@/components/GeneratorShell";
-import { ColorSelect, Field, PriceBox, Segmented, Slider, UploadBox } from "@/components/ui";
+import { AccordionItem, ColorSelect, Field, PriceBox, Segmented, Slider, UploadBox } from "@/components/ui";
 import { Viewport } from "@/components/Viewport";
 import { playMechanicalClick } from "@/lib/audio";
 import { clickerEyeletShape, extrudeFlat } from "@/lib/geometry";
-import { saveDraft, useReliefSource, useToast } from "@/lib/hooks";
+import { loadDraft, saveDraft, useReliefSource, useToast } from "@/lib/hooks";
 import { buildRelief } from "@/lib/imageRelief";
 import { buildVectorRelief, type VectorReliefResult } from "@/lib/vectorRelief";
 import { estimateByVolume, formatRp } from "@/lib/pricing";
@@ -23,6 +23,7 @@ type Design = {
   step: number;
   outline: number;
   ring: boolean;
+  ringPos?: "atas" | "bawah";
   baseColor: string;
   housingColor?: string;
   overrides: Record<number, string>;
@@ -35,6 +36,7 @@ const DEFAULTS: Omit<Design, "imageUrl"> = {
   step: 0.8,
   outline: 1.6,
   ring: true,
+  ringPos: "atas",
   baseColor: "#f4f4f2",
   housingColor: "#f4f4f2",
   overrides: {},
@@ -79,7 +81,7 @@ function InteractiveCharacterCap({
   const handleClick = (e: { stopPropagation: () => void }) => {
     e.stopPropagation();
     playMechanicalClick(1.0);
-    target.current = -2.2;
+    target.current = -2.0;
   };
 
   return (
@@ -93,11 +95,26 @@ function InteractiveCharacterCap({
       }}
       onPointerOut={() => setHovered(false)}
     >
+      {/* Batang Switch Mekanikal (Cherry/Kailh Cross Stem) yang terhubung ke keycap */}
+      <group position={[0, -2.4, 0]}>
+        <mesh castShadow>
+          <boxGeometry args={[4.0, 4.8, 1.2]} />
+          <meshStandardMaterial color="#0284c7" roughness={0.35} />
+        </mesh>
+        <mesh castShadow>
+          <boxGeometry args={[1.2, 4.8, 4.0]} />
+          <meshStandardMaterial color="#0284c7" roughness={0.35} />
+        </mesh>
+      </group>
+
+      {/* Alas & Skirt Keycap Karakter */}
       {relief.baseGeometry && (
         <mesh geometry={relief.baseGeometry} castShadow receiveShadow>
           <meshStandardMaterial color={relief.baseColor} roughness={0.38} metalness={0.06} />
         </mesh>
       )}
+
+      {/* Layer-layer Relief Warna Gambar */}
       {relief.layers.map((layer, idx) => (
         <mesh key={idx} geometry={layer.geometry} castShadow receiveShadow>
           <meshStandardMaterial color={layer.color} roughness={0.38} metalness={0.06} />
@@ -109,6 +126,7 @@ function InteractiveCharacterCap({
 
 function Scene({ d, onVolume }: { d: Design; onVolume: (v: number) => void }) {
   const { source, error } = useReliefSource(d.imageUrl, 240);
+  const ringPos = d.ringPos ?? "atas";
 
   const vectorRelief = useMemo(() => {
     if (!source) return null;
@@ -125,17 +143,20 @@ function Scene({ d, onVolume }: { d: Design; onVolume: (v: number) => void }) {
     });
   }, [source, d.width, d.colors, d.baseThick, d.step, d.outline, d.baseColor, d.housingColor, d.overrides]);
 
-  const eyeletGeo = useMemo(
-    () =>
-      d.ring
-        ? extrudeFlat([clickerEyeletShape(4.8, 2.3, 8.5, 5.6)], 4.2, {
-            bevel: 0.4,
-            bevelSize: 0.35,
-            curveSegments: 20,
-          })
-        : null,
-    [d.ring],
-  );
+  const eyeletGeo = useMemo(() => {
+    if (!d.ring) return null;
+    const geo = extrudeFlat([clickerEyeletShape(4.8, 2.3, 8.5, 5.8)], 4.2, {
+      bevel: 0.4,
+      bevelSize: 0.35,
+      curveSegments: 20,
+    });
+    // Jika di atas, putar 180° agar lubang mengarah ke luar (+Z)
+    if (ringPos === "atas") {
+      geo.rotateY(Math.PI);
+    }
+    return geo;
+  }, [d.ring, ringPos]);
+
   useEffect(() => () => eyeletGeo?.dispose(), [eyeletGeo]);
 
   useEffect(() => {
@@ -149,23 +170,42 @@ function Scene({ d, onVolume }: { d: Design; onVolume: (v: number) => void }) {
   const restingY = HOUSING_HEIGHT + TRAVEL_GAP;
   const housingCol = d.housingColor ?? d.baseColor;
 
+  const eyeletZ =
+    ringPos === "atas"
+      ? vectorRelief.top.z - 0.4
+      : (vectorRelief.bottom?.z ?? -vectorRelief.top.z) + 0.4;
+
   return (
     <group>
-      {/* 1. Bodi housing clicker di bawah (mengikuti siluet karakter) */}
+      {/* 1. Bodi housing clicker di bawah (mengikuti siluet karakter secara presisi) */}
       {vectorRelief.housingGeometry && (
         <mesh geometry={vectorRelief.housingGeometry} castShadow receiveShadow>
           <meshStandardMaterial color={housingCol} roughness={0.42} metalness={0.04} />
         </mesh>
       )}
 
-      {/* 2. Tombol karakter ber-spring yang bisa diklik dan mengeluarkan suara */}
+      {/* 2. Switch Mekanikal Realistis di dalam Rongga Housing */}
+      <group position={[0, HOUSING_HEIGHT - 3.2, 0]}>
+        {/* Switch Body Housing (Dark Charcoal) */}
+        <mesh position={[0, 0, 0]} castShadow receiveShadow>
+          <boxGeometry args={[14.2, 5.2, 14.2]} />
+          <meshStandardMaterial color="#1e2229" roughness={0.65} metalness={0.12} />
+        </mesh>
+        {/* Switch Collar Rim */}
+        <mesh position={[0, 2.7, 0]} castShadow receiveShadow>
+          <boxGeometry args={[11.2, 1.6, 11.2]} />
+          <meshStandardMaterial color="#2c313c" roughness={0.5} metalness={0.15} />
+        </mesh>
+      </group>
+
+      {/* 3. Tombol karakter ber-spring mekanikal yang bisa diklik */}
       <InteractiveCharacterCap relief={vectorRelief} restingY={restingY} />
 
-      {/* 3. Kuping gantungan tali (Eyelet) terintegrasi kokoh pada bodi clicker */}
+      {/* 4. Kuping gantungan tali (Eyelet) yang selalu CENTER di x = 0 */}
       {eyeletGeo && (
         <mesh
           geometry={eyeletGeo}
-          position={[vectorRelief.top.x, 0, vectorRelief.top.z + 1.2]}
+          position={[0, 0, eyeletZ]}
           castShadow
           receiveShadow
         >
@@ -198,14 +238,18 @@ function Editor({ d, setD, onBack }: { d: Design; setD: (p: Partial<Design>) => 
   const key = JSON.stringify({ ...d, imageUrl: d.imageUrl.length });
   const shown = priced && priced.key === key ? priced : null;
 
+  const [openSec, setOpenSec] = useState({
+    dimensi: true,
+    warna: false,
+  });
+  const toggleSec = (k: keyof typeof openSec) =>
+    setOpenSec((prev) => ({ ...prev, [k]: !prev[k] }));
+
   return (
     <GeneratorShell
       title="Clicker Karakter"
       subtitle="Gambarmu menjadi clicker berelief. Atur ukuran, jumlah warna, dan ketebalan."
       teaser="Harga dihitung setelah desain diperiksa · termasuk paracord + carabiner"
-      tabs={TABS}
-      tab={tab}
-      onTab={setTab}
       toast={toast.msg}
       stage={
         <Viewport hint="Klik karakter untuk mencoba klik · geser untuk putar" fitKey={d.imageUrl.length + ""}>
@@ -213,62 +257,77 @@ function Editor({ d, setD, onBack }: { d: Design; setD: (p: Partial<Design>) => 
         </Viewport>
       }
       panel={
-        <>
-          {tab === "gambar" && (
-            <>
-              <Field label="Gambar">
-                <div className="row-gap">
-                  <button type="button" className="btn btn-ghost" id="btn-change-image" onClick={onBack}>
-                    ← Ganti gambar
-                  </button>
-                </div>
-              </Field>
-              <Slider label="Lebar clicker" value={d.width} min={30} max={70} step={1} onChange={(width) => setD({ width })} />
-              <Field label="Jumlah warna" hint="Maksimal 3 warna agar ramah cetak FDM.">
-                <Segmented
-                  value={d.colors}
-                  onChange={(colors) => setD({ colors, overrides: {} })}
-                  options={[
-                    { id: 1, label: "1" },
-                    { id: 2, label: "2" },
-                    { id: 3, label: "3" },
-                  ]}
-                />
-              </Field>
-              <Slider label="Tebal alas tombol" value={d.baseThick} min={2} max={5} step={0.2} onChange={(baseThick) => setD({ baseThick })} />
-              <Slider label="Tinggi relief" value={d.step} min={0.4} max={1.6} step={0.1} onChange={(step) => setD({ step })} />
-              <Slider label="Tepi alas" value={d.outline} min={0} max={4} step={0.2} onChange={(outline) => setD({ outline })} />
-              <Field label="Ring paracord">
-                <Segmented
-                  value={d.ring ? "ya" : "tidak"}
-                  onChange={(v) => setD({ ring: v === "ya" })}
-                  options={[
-                    { id: "ya", label: "Pakai" },
-                    { id: "tidak", label: "Tanpa" },
-                  ]}
-                />
-              </Field>
-            </>
-          )}
-          {tab === "warna" && (
-            <>
-              <ColorSelect label="Warna tepi karakter" value={d.baseColor} onChange={(baseColor) => setD({ baseColor })} />
-              <ColorSelect
-                label="Warna bodi clicker"
-                value={d.housingColor ?? d.baseColor}
-                onChange={(housingColor) => setD({ housingColor })}
+        <div className="acc-list">
+          <AccordionItem
+            id="acc-dimensi"
+            title="1. Gambar & Dimensi Karakter"
+            subtitle="Atur ukuran, tinggi relief, dan ring gantungan"
+            badge={`Lebar ${d.width}mm`}
+            isOpen={openSec.dimensi}
+            onToggle={() => toggleSec("dimensi")}
+          >
+            <Field label="Gambar">
+              <div className="row-gap">
+                <button type="button" className="btn btn-ghost" id="btn-change-image" onClick={onBack}>
+                  ← Ganti gambar
+                </button>
+              </div>
+            </Field>
+            <Slider label="Lebar clicker" value={d.width} min={30} max={70} step={1} onChange={(width) => setD({ width })} />
+            <Field label="Jumlah warna relief" hint="Maksimal 3 warna agar ramah cetak FDM.">
+              <Segmented
+                value={d.colors}
+                onChange={(colors) => setD({ colors, overrides: {} })}
+                options={[
+                  { id: 1, label: "1" },
+                  { id: 2, label: "2" },
+                  { id: 3, label: "3" },
+                ]}
               />
-              {palette.map((c, i) => (
-                <ColorSelect
-                  key={i}
-                  label={`Warna gambar ${i + 1}`}
-                  value={d.overrides[i] ?? c}
-                  onChange={(hex) => setD({ overrides: { ...d.overrides, [i]: hex } })}
-                />
-              ))}
-            </>
-          )}
-        </>
+            </Field>
+            <Slider label="Tebal alas tombol" value={d.baseThick} min={2} max={5} step={0.2} onChange={(baseThick) => setD({ baseThick })} />
+            <Slider label="Tinggi relief" value={d.step} min={0.4} max={1.6} step={0.1} onChange={(step) => setD({ step })} />
+            <Slider label="Tepi alas" value={d.outline} min={0} max={4} step={0.2} onChange={(outline) => setD({ outline })} />
+            <Field label="Gantungan kuping">
+              <Segmented
+                value={d.ring ? (d.ringPos ?? "atas") : "tanpa"}
+                onChange={(v) => {
+                  if (v === "tanpa") setD({ ring: false });
+                  else setD({ ring: true, ringPos: v as "atas" | "bawah" });
+                }}
+                options={[
+                  { id: "atas", label: "Atas (Center)" },
+                  { id: "bawah", label: "Bawah (Center)" },
+                  { id: "tanpa", label: "Tanpa Kuping" },
+                ]}
+              />
+            </Field>
+          </AccordionItem>
+
+          <AccordionItem
+            id="acc-warna"
+            title="2. Pilihan Warna Karakter & Bodi"
+            subtitle="Atur warna tepi, bodi housing, dan tiap layer gambar"
+            badge={`${d.colors} Warna`}
+            isOpen={openSec.warna}
+            onToggle={() => toggleSec("warna")}
+          >
+            <ColorSelect label="Warna tepi karakter" value={d.baseColor} onChange={(baseColor) => setD({ baseColor })} />
+            <ColorSelect
+              label="Warna bodi clicker"
+              value={d.housingColor ?? d.baseColor}
+              onChange={(housingColor) => setD({ housingColor })}
+            />
+            {palette.map((c, i) => (
+              <ColorSelect
+                key={i}
+                label={`Warna gambar layer ${i + 1}`}
+                value={d.overrides[i] ?? c}
+                onChange={(hex) => setD({ overrides: { ...d.overrides, [i]: hex } })}
+              />
+            ))}
+          </AccordionItem>
+        </div>
       }
       foot={
         <>
@@ -334,11 +393,12 @@ function Editor({ d, setD, onBack }: { d: Design; setD: (p: Partial<Design>) => 
                 const price = est.price + ACCESSORY;
                 setPriced({ key, price });
                 saveDraft("bikin-clicker", { ...d, imageUrl: d.imageUrl.startsWith("data:image/svg") ? d.imageUrl : "(gambar upload)" });
-                toast.show(`Estimasi harga ${formatRp(price)}. Desain tersimpan di browser ini.`);
+                toast.show(`Estimasi harga ${formatRp(price)}. Draf tersimpan di browser (berlaku 1 hari).`);
               }}
             >
               <SaveIcon /> Simpan ke Draft Saja
             </button>
+            <span className="draft-expiry-hint">⏱️ Draf disimpan di browser & berlaku selama 1 hari</span>
           </div>
         </>
       }
@@ -348,9 +408,17 @@ function Editor({ d, setD, onBack }: { d: Design; setD: (p: Partial<Design>) => 
 
 export default function CharacterClickerGen() {
   const [d, setDState] = useState<Design | null>(null);
+  const [savedDraft, setSavedDraft] = useState<Design | null>(null);
   const toast = useToast();
   const setD = (p: Partial<Design>) => setDState((cur) => (cur ? { ...cur, ...p } : cur));
   const start = (imageUrl: string) => setDState({ ...DEFAULTS, imageUrl });
+
+  useEffect(() => {
+    const draft = loadDraft<Design>("bikin-clicker");
+    if (draft && draft.imageUrl && draft.imageUrl !== "(gambar upload)") {
+      setSavedDraft(draft);
+    }
+  }, []);
 
   if (d) return <Editor d={d} setD={setD} onBack={() => setDState(null)} />;
 
@@ -365,6 +433,19 @@ export default function CharacterClickerGen() {
       <p className="hint">Tips: gambar/logo dengan subjek jelas dan background polos memberi hasil terbaik.</p>
 
       <div className="char-actions">
+        {savedDraft && (
+          <button
+            type="button"
+            id="btn-resume-draft"
+            className="btn btn-secondary"
+            onClick={() => {
+              setDState(savedDraft);
+              toast.show("Melanjutkan draf sebelumnya.");
+            }}
+          >
+            📂 Lanjutkan draf tersimpan
+          </button>
+        )}
         <button type="button" id="btn-try-sample" className="btn btn-primary" onClick={() => start(SAMPLES[0].url)}>
           ✦ Coba contoh
         </button>

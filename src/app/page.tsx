@@ -140,42 +140,76 @@ export default function Home() {
           </div>
         </div>
 
-        <div className={`generator-cards-grid ${filteredProducts.length % 2 !== 0 ? "is-odd" : ""}`}>
-          {filteredProducts.map((p: Product) => (
-            <div key={p.slug} className="generator-card" id={`gen-card-${p.slug}`}>
-              <div className="card-top">
-                <span className="card-product-icon">{p.icon}</span>
-                {p.badge && <span className="card-badge">{p.badge}</span>}
-              </div>
-
-              <div className="card-body">
-                <h3 className="card-title">{p.title}</h3>
-                <p className="card-desc">{p.desc}</p>
-
-                <ul className="card-features">
-                  {p.features.slice(0, 3).map((f, i) => (
-                    <li key={i}>
-                      <span className="feature-dot">·</span> {f}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              <div className="card-footer">
-                <div className="card-pricing">
-                  <span className="price-label">Mulai dari</span>
-                  <span className="price-val">{p.startingPrice}</span>
+        <div className={`generator-cards-grid count-${filteredProducts.length}`}>
+          {filteredProducts.map((p: Product, idx: number) => {
+            const isFeatured = Boolean(p.badge);
+            return (
+              <div
+                key={p.slug}
+                className={`generator-card ${isFeatured ? "is-featured" : ""} card-pos-${idx}`}
+                id={`gen-card-${p.slug}`}
+              >
+                {/* Large 3D Showcase Image Stage */}
+                <div className="card-image-stage">
+                  <Image
+                    src={p.image3d}
+                    alt={p.title}
+                    fill
+                    sizes="(max-width: 680px) 100vw, (max-width: 1080px) 50vw, 33vw"
+                    className="card-3d-showcase-img"
+                    priority={idx < 2}
+                  />
+                  <div className="card-stage-reflection" />
+                  
+                  {p.badge && (
+                    <span className="card-floating-badge">
+                      <span className="badge-sparkle">✦</span>
+                      <span>{p.badge}</span>
+                    </span>
+                  )}
+                  
+                  <span className="card-type-tag">
+                    {p.category === "clicker"
+                      ? "Fidget Clicker"
+                      : p.category === "keychain"
+                      ? "Gantungan"
+                      : "Aksesori"}
+                  </span>
                 </div>
-                <Link
-                  href={`/${p.slug}`}
-                  className="btn-primary btn-sm"
-                  id={`btn-open-${p.slug}`}
-                >
-                  Buka Generator 3D →
-                </Link>
+
+                <div className="card-content-wrap">
+                  <div className="card-body">
+                    <h3 className="card-title">{p.title}</h3>
+                    <p className="card-desc">{p.desc}</p>
+
+                    <ul className="card-features">
+                      {p.features.slice(0, 3).map((f, i) => (
+                        <li key={i}>
+                          <span className="feature-check">✓</span>
+                          <span>{f}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="card-footer">
+                    <div className="card-pricing">
+                      <span className="price-label">Mulai dari</span>
+                      <span className="price-val">{p.startingPrice}</span>
+                    </div>
+                    <Link
+                      href={`/${p.slug}`}
+                      className="btn-open-gen"
+                      id={`btn-open-${p.slug}`}
+                    >
+                      <span>Buka Generator 3D</span>
+                      <span className="btn-arrow">→</span>
+                    </Link>
+                  </div>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </section>
 

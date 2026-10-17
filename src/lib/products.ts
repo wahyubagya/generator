@@ -4,6 +4,7 @@ export type Product = {
   title: string;
   desc: string;
   icon: string;
+  image3d: string;
   category: "clicker" | "keychain" | "organizer" | "display" | "accessories";
   badge?: string;
   startingPrice: string;
@@ -17,6 +18,7 @@ export const PRODUCTS: Product[] = [
     title: "Clicker Karakter",
     desc: "Unggah gambar atau logo, rapikan desain, pilih warna filamen, dan lihat bentuk clicker pada preview 3D.",
     icon: "🎭",
+    image3d: "/images/gen-3d-character.jpg",
     category: "clicker",
     badge: "Paling Populer",
     startingPrice: "Rp 35.000",
@@ -33,6 +35,7 @@ export const PRODUCTS: Product[] = [
     title: "Gantungan Clicker Nama",
     desc: "Menyusun hingga 10 tombol switch mekanikal, mengisi huruf, angka, ikon, lalu melihat preview 3D.",
     icon: "🔑",
+    image3d: "/images/gen-3d-keychain.jpg",
     category: "clicker",
     badge: "Best Seller",
     startingPrice: "Rp 25.000",
@@ -49,6 +52,7 @@ export const PRODUCTS: Product[] = [
     title: "Clicker Nama Susun (Modular)",
     desc: "Menggabungkan huruf dan ikon menjadi clicker modular; jumlah modul dan warna dapat dibongkar-pasang.",
     icon: "🧩",
+    image3d: "/images/gen-3d-modular.jpg",
     category: "clicker",
     startingPrice: "Rp 30.000",
     features: [
@@ -64,6 +68,7 @@ export const PRODUCTS: Product[] = [
     title: "Gantungan Nama & Logo",
     desc: "Membuat gantungan dari nama atau gambar/logo, dengan bentuk outline, kotak, atau kapsul plus preview 3D.",
     icon: "🏷️",
+    image3d: "/images/gen-3d-nametag.jpg",
     category: "keychain",
     startingPrice: "Rp 20.000",
     features: [
@@ -79,6 +84,7 @@ export const PRODUCTS: Product[] = [
     title: "Klip Nama Alat Tulis",
     desc: "Membuat penanda pensil atau pulpen dengan nama dan warna pilihan; pas untuk hadiah dan merchandise.",
     icon: "🖊️",
+    image3d: "/images/gen-3d-penclip.jpg",
     category: "accessories",
     startingPrice: "Rp 15.000",
     features: [

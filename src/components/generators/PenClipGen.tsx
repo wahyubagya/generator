@@ -5,7 +5,7 @@ import * as THREE from "three";
 import { GeneratorShell, SaveIcon } from "@/components/GeneratorShell";
 import { BulkNames, DesignChips } from "@/components/BulkNames";
 import { LegendMesh, useLine } from "@/components/models";
-import { ColorSelect, Field, FontPicker, FontPreviewLoader, PriceBox, Segmented, Slider, TextInput } from "@/components/ui";
+import { AccordionItem, ColorSelect, Field, FontPicker, FontPreviewLoader, PriceBox, Segmented, Slider, TextInput } from "@/components/ui";
 import { Viewport } from "@/components/Viewport";
 import { DEFAULT_FONT } from "@/lib/fonts";
 import { clipTubeGeometry, extrudeUpright, ICON_OPTIONS, roundedRectShape, type IconKind } from "@/lib/geometry";
@@ -29,7 +29,7 @@ type Design = {
 };
 
 const INITIAL: Design = {
-  text: "ARTHUR",
+  text: "NAMA",
   fontId: DEFAULT_FONT,
   icon: null,
   capHeight: 10,
@@ -114,9 +114,8 @@ const TABS: { id: Tab; label: string }[] = [
 const ICON_GLYPH: Record<string, string> = { heart: "♥", star: "★", bolt: "⚡", flower: "✿", paw: "🐾", smile: "☺" };
 
 export default function PenClipGen() {
-  const D = useDesigns<Design>(INITIAL, 8);
+  const D = useDesigns<Design>(INITIAL, 8, "clip-nama-alat-tulis");
   const d = D.current;
-  const [tab, setTab] = useState<Tab>("nama");
   const [volume, setVolume] = useState(0);
   const [priced, setPriced] = useState<{ key: string; price: number; grams: number } | null>(null);
   const toast = useToast();
@@ -124,15 +123,20 @@ export default function PenClipGen() {
   const shown = priced && priced.key === key ? priced : null;
   const lowC = lowContrast(d.baseColor, d.textColor);
 
+  const [openSec, setOpenSec] = useState({
+    nama: true,
+    ukuran: false,
+    warna: false,
+  });
+  const toggleSec = (k: keyof typeof openSec) =>
+    setOpenSec((prev) => ({ ...prev, [k]: !prev[k] }));
+
   return (
     <>
       <FontPreviewLoader />
       <GeneratorShell
         title="Nama untuk Pensil & Pulpen"
         subtitle="Pilih nama, ukuran, dan warna. Lihat hasilnya langsung."
-        tabs={TABS}
-        tab={tab}
-        onTab={setTab}
         toast={toast.msg}
         top={
           <>
@@ -152,65 +156,82 @@ export default function PenClipGen() {
           </Viewport>
         }
         panel={
-          <>
-            {tab === "nama" && (
-              <>
-                <Field label="Nama" hint="Maksimal 14 karakter.">
-                  <TextInput value={d.text} max={14} id="input-clip-text" onChange={(text) => D.update({ text })} />
-                </Field>
-                <Field label="Pilih gaya huruf">
-                  <FontPicker value={d.fontId} sample={d.text || "NAMA"} onChange={(fontId) => D.update({ fontId })} />
-                </Field>
-                <Field label="Ikon (opsional)">
-                  <div className="icon-grid">
-                    <button type="button" className={`icon-btn ${d.icon === null ? "is-active" : ""}`} onClick={() => D.update({ icon: null })}>
-                      Aa
+          <div className="acc-list">
+            <AccordionItem
+              id="acc-nama"
+              title="1. Nama, Font & Ikon"
+              subtitle="Tulis nama dan hias dengan ikon lucu"
+              badge={`${d.text || "Nama"}${d.icon ? ` · ${d.icon}` : ""}`}
+              isOpen={openSec.nama}
+              onToggle={() => toggleSec("nama")}
+            >
+              <Field label="Nama" hint="Maksimal 14 karakter.">
+                <TextInput value={d.text} max={14} id="input-clip-text" onChange={(text) => D.update({ text })} />
+              </Field>
+              <Field label="Pilih gaya huruf">
+                <FontPicker value={d.fontId} sample={d.text || "NAMA"} onChange={(fontId) => D.update({ fontId })} />
+              </Field>
+              <Field label="Ikon (opsional)">
+                <div className="icon-grid">
+                  <button type="button" className={`icon-btn ${d.icon === null ? "is-active" : ""}`} onClick={() => D.update({ icon: null })}>
+                    Aa
+                  </button>
+                  {ICON_OPTIONS.map((o) => (
+                    <button
+                      key={o.id}
+                      type="button"
+                      title={o.label}
+                      className={`icon-btn ${d.icon === o.id ? "is-active" : ""}`}
+                      onClick={() => D.update({ icon: o.id })}
+                    >
+                      {ICON_GLYPH[o.id]}
                     </button>
-                    {ICON_OPTIONS.map((o) => (
-                      <button
-                        key={o.id}
-                        type="button"
-                        title={o.label}
-                        className={`icon-btn ${d.icon === o.id ? "is-active" : ""}`}
-                        onClick={() => D.update({ icon: o.id })}
-                      >
-                        {ICON_GLYPH[o.id]}
-                      </button>
-                    ))}
-                  </div>
-                </Field>
-              </>
-            )}
-            {tab === "ukuran" && (
-              <>
-                <Field label="Dipasang di" hint="Menentukan diameter lubang clip.">
-                  <Segmented
-                    value={d.pen}
-                    onChange={(pen) => D.update({ pen })}
-                    options={(Object.keys(PEN_LABEL) as Pen[]).map((p) => ({ id: p, label: PEN_LABEL[p] }))}
-                  />
-                </Field>
-                <Slider label="Tinggi huruf" value={d.capHeight} min={7} max={16} step={0.5} onChange={(capHeight) => D.update({ capHeight })} />
-                <Slider label="Tebal plat" value={d.plateThick} min={1.6} max={3.5} step={0.2} onChange={(plateThick) => D.update({ plateThick })} />
-                <Slider label="Tinggi tulisan timbul" value={d.reliefH} min={0.6} max={2.4} step={0.2} onChange={(reliefH) => D.update({ reliefH })} />
-              </>
-            )}
-            {tab === "warna" && (
-              <>
-                <div className="color-head">
-                  <b>Warna desain</b>
-                  {lowC && <span className="badge-warn">Kontras rendah</span>}
+                  ))}
                 </div>
-                <ColorSelect label="Bagian dasar" value={d.baseColor} onChange={(baseColor) => D.update({ baseColor })} hint="Pilih dari stok warna." />
-                <ColorSelect
-                  label="Nama & ikon"
-                  value={d.textColor}
-                  onChange={(textColor) => D.update({ textColor })}
-                  warn={lowC ? "Pilih warna yang lebih berbeda agar nama terlihat jelas setelah dicetak." : undefined}
+              </Field>
+            </AccordionItem>
+
+            <AccordionItem
+              id="acc-ukuran"
+              title="2. Jenis Alat Tulis & Ukuran"
+              subtitle="Tentukan diameter lubang clip dan dimensi plat"
+              badge={PEN_LABEL[d.pen]}
+              isOpen={openSec.ukuran}
+              onToggle={() => toggleSec("ukuran")}
+            >
+              <Field label="Dipasang di" hint="Menentukan diameter lubang clip.">
+                <Segmented
+                  value={d.pen}
+                  onChange={(pen) => D.update({ pen })}
+                  options={(Object.keys(PEN_LABEL) as Pen[]).map((p) => ({ id: p, label: PEN_LABEL[p] }))}
                 />
-              </>
-            )}
-          </>
+              </Field>
+              <Slider label="Tinggi huruf" value={d.capHeight} min={7} max={16} step={0.5} onChange={(capHeight) => D.update({ capHeight })} />
+              <Slider label="Tebal plat" value={d.plateThick} min={1.6} max={3.5} step={0.2} onChange={(plateThick) => D.update({ plateThick })} />
+              <Slider label="Tinggi tulisan timbul" value={d.reliefH} min={0.6} max={2.4} step={0.2} onChange={(reliefH) => D.update({ reliefH })} />
+            </AccordionItem>
+
+            <AccordionItem
+              id="acc-warna"
+              title="3. Pilihan Warna"
+              subtitle="Pilih kombinasi warna dasar dan tulisan"
+              badge="Warna"
+              isOpen={openSec.warna}
+              onToggle={() => toggleSec("warna")}
+            >
+              <div className="color-head">
+                <b>Warna desain</b>
+                {lowC && <span className="badge-warn">Kontras rendah</span>}
+              </div>
+              <ColorSelect label="Bagian dasar" value={d.baseColor} onChange={(baseColor) => D.update({ baseColor })} hint="Pilih dari stok warna." />
+              <ColorSelect
+                label="Nama & ikon"
+                value={d.textColor}
+                onChange={(textColor) => D.update({ textColor })}
+                warn={lowC ? "Pilih warna yang lebih berbeda agar nama terlihat jelas setelah dicetak." : undefined}
+              />
+            </AccordionItem>
+          </div>
         }
         foot={
           <>
@@ -258,11 +279,12 @@ export default function PenClipGen() {
                   const est = estimateByVolume(volume, 2);
                   setPriced({ key, price: est.price, grams: est.grams });
                   saveDraft("clip-nama-alat-tulis", D.items);
-                  toast.show(`Estimasi harga ${formatRp(est.price)}. Desain tersimpan di browser ini.`);
+                  toast.show(`Estimasi harga ${formatRp(est.price)}. Draf tersimpan di browser (berlaku 1 hari).`);
                 }}
               >
                 <SaveIcon /> Simpan ke Draft Saja
               </button>
+              <span className="draft-expiry-hint">⏱️ Draf disimpan di browser & berlaku selama 1 hari</span>
             </div>
           </>
         }

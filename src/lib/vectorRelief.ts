@@ -252,7 +252,99 @@ function traceMaskLoops(mask: Uint8Array, w: number, h: number, minArea = 5, sig
  * Builds THREE.Shape[] from loops. Orientasi loop dari marching squares konsisten,
  * jadi tanda area membedakan kontur luar vs lubang (pulau di dalam lubang tetap benar).
  */
-function loopsToShapes(loops: Pt[][], w: number, h: number, cell: number): THREE.Shape[] {
+function edt1d(f: Float32Array, n: number, d: Float32Array) {
+  const v = new Int32Array(n);
+  const z = new Float32Array(n + 1);
+  let k = 0;
+  v[0] = 0;
+  z[0] = -Infinity;
+  z[1] = Infinity;
+  for (let q = 1; q < n; q++) {
+    let s = (f[q] + q * q - (f[v[k]] + v[k] * v[k])) / (2 * q - 2 * v[k]);
+    while (s <= z[k]) {
+      k--;
+      s = (f[q] + q * q - (f[v[k]] + v[k] * v[k])) / (2 * q - 2 * v[k]);
+    }
+    k++;
+    v[k] = q;
+    z[k] = s;
+    z[k + 1] = Infinity;
+  }
+  k = 0;
+  for (let q = 0; q < n; q++) {
+    while (z[k + 1] < q) k++;
+    const dx = q - v[k];
+    d[q] = f[v[k]] + dx * dx;
+  }
+}
+
+/**
+ * Exact Euclidean Distance Transform Dilation in an expansive padded canvas.
+ * This guarantees that dilation never hits the image boundary and preserves
+ * the exact organic / circular contours of the character.
+ */
+function computeDilationMask(
+  srcBg: Uint8Array,
+  w: number,
+  h: number,
+  dilationPx: number,
+  padPx: number,
+): { mask: Uint8Array; W_pad: number; H_pad: number } {
+  const W_pad = w + 2 * padPx;
+  const H_pad = h + 2 * padPx;
+  const N = W_pad * H_pad;
+  const INF = 1e8;
+  const grid = new Float32Array(N);
+  grid.fill(INF);
+
+  for (let y = 0; y < h; y++) {
+    const row = (y + padPx) * W_pad + padPx;
+    const srow = y * w;
+    for (let x = 0; x < w; x++) {
+      if (srcBg[srow + x] === 0) {
+        grid[row + x] = 0;
+      }
+    }
+  }
+
+  const colF = new Float32Array(H_pad);
+  const colD = new Float32Array(H_pad);
+  for (let x = 0; x < W_pad; x++) {
+    for (let y = 0; y < H_pad; y++) colF[y] = grid[y * W_pad + x];
+    edt1d(colF, H_pad, colD);
+    for (let y = 0; y < H_pad; y++) grid[y * W_pad + x] = colD[y];
+  }
+
+  const rowF = new Float32Array(W_pad);
+  const rowD = new Float32Array(W_pad);
+  const mask = new Uint8Array(N);
+  const r2 = dilationPx * dilationPx;
+
+  for (let y = 0; y < H_pad; y++) {
+    const yOff = y * W_pad;
+    for (let x = 0; x < W_pad; x++) rowF[x] = grid[yOff + x];
+    edt1d(rowF, W_pad, rowD);
+    for (let x = 0; x < W_pad; x++) {
+      if (rowD[x] <= r2) {
+        mask[yOff + x] = 1;
+      }
+    }
+  }
+
+  return { mask, W_pad, H_pad };
+}
+
+/**
+ * Builds THREE.Shape[] from loops. Orientasi loop dari marching squares konsisten,
+ * jadi tanda area membedakan kontur luar vs lubang (pulau di dalam lubang tetap benar).
+ */
+function loopsToShapes(
+  loops: Pt[][],
+  w: number,
+  h: number,
+  cell: number,
+  padPx = 0,
+): THREE.Shape[] {
   if (loops.length === 0) return [];
 
   const data = loops.map((pts) => {
@@ -263,7 +355,7 @@ function loopsToShapes(loops: Pt[][], w: number, h: number, cell: number): THREE
   const outerSign = Math.sign(biggest.area) || 1;
 
   const toVec = (pts: Pt[]) =>
-    pts.map(([px, py]) => new THREE.Vector2((px - w / 2) * cell, (py - h / 2) * cell));
+    pts.map(([px, py]) => new THREE.Vector2((px - padPx - w / 2) * cell, (py - padPx - h / 2) * cell));
 
   // Luar diurutkan dari terkecil agar lubang masuk ke induk terdekat.
   const outers = data
@@ -302,6 +394,7 @@ export type VectorReliefResult = {
   housingColor?: string;
   housingHeight?: number;
   top: { x: number; z: number };
+  bottom: { x: number; z: number };
   volume: number;
 };
 
@@ -331,73 +424,22 @@ export function buildVectorRelief(
   const q = quantize(src, options.k);
   const cell = options.width / w;
   const dil = Math.max(0, Math.round(options.outline / Math.max(0.15, cell)));
+  const hDil = dil + Math.max(3, Math.round(2.0 / Math.max(0.15, cell)));
+  const padPx = Math.ceil(hDil) + 24;
 
-  // 1. Alas (foreground + perluasan outline)
+  // 1. Alas tombol atas & Bodi housing bawah (ukuran XZ luar dibuat SAMA PERSIS)
   let baseGeo: THREE.BufferGeometry | null = null;
-  let baseLoops: Pt[][] = [];
-  if (dil > 0) {
-    const baseMask = new Uint8Array(w * h);
-    const d2 = dil * dil;
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        const p = y * w + x;
-        if (bg[p] === 0) {
-          baseMask[p] = 1;
-          continue;
-        }
-        let hit = false;
-        for (let dy = -dil; dy <= dil && !hit; dy++) {
-          const ny = y + dy;
-          if (ny < 0 || ny >= h) continue;
-          for (let dx = -dil; dx <= dil; dx++) {
-            const nx = x + dx;
-            if (nx >= 0 && nx < w && dx * dx + dy * dy <= d2 && bg[ny * w + nx] === 0) {
-              hit = true;
-              break;
-            }
-          }
-        }
-        if (hit) baseMask[p] = 1;
-      }
-    }
-    baseLoops = traceMaskLoops(baseMask, w, h, 12, 1.2);
-    const baseShapes = loopsToShapes(baseLoops, w, h, cell);
-    if (baseShapes.length > 0) baseGeo = smoothExtrude(baseShapes, options.baseThick, BASE_BEVEL);
-  }
-
-  // 1b. Bodi Housing Clicker (Mengikuti siluet luar gambar dengan offset casing kokoh)
   let housingGeo: THREE.BufferGeometry | null = null;
-  let housingLoops: Pt[][] = [];
-  if (options.housingHeight && options.housingHeight > 0) {
-    const hDil = dil + Math.max(2, Math.round(1.5 / Math.max(0.15, cell)));
-    const h2 = hDil * hDil;
-    const housingMask = new Uint8Array(w * h);
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        const p = y * w + x;
-        if (bg[p] === 0) {
-          housingMask[p] = 1;
-          continue;
-        }
-        let hit = false;
-        for (let dy = -hDil; dy <= hDil && !hit; dy++) {
-          const ny = y + dy;
-          if (ny < 0 || ny >= h) continue;
-          for (let dx = -hDil; dx <= hDil; dx++) {
-            const nx = x + dx;
-            if (nx >= 0 && nx < w && dx * dx + dy * dy <= h2 && bg[ny * w + nx] === 0) {
-              hit = true;
-              break;
-            }
-          }
-        }
-        if (hit) housingMask[p] = 1;
-      }
-    }
-    housingLoops = traceMaskLoops(housingMask, w, h, 14, 1.4);
-    const housingShapes = loopsToShapes(housingLoops, w, h, cell);
-    if (housingShapes.length > 0) {
-      housingGeo = smoothExtrude(housingShapes, options.housingHeight, 0.6);
+  let baseLoops: Pt[][] = [];
+
+  const { mask: baseMask, W_pad, H_pad } = computeDilationMask(bg, w, h, dil, padPx);
+  baseLoops = traceMaskLoops(baseMask, W_pad, H_pad, 12, 1.2);
+  const baseShapes = loopsToShapes(baseLoops, w, h, cell, padPx);
+
+  if (baseShapes.length > 0) {
+    baseGeo = smoothExtrude(baseShapes, options.baseThick, BASE_BEVEL);
+    if (options.housingHeight && options.housingHeight > 0) {
+      housingGeo = smoothExtrude(baseShapes, options.housingHeight, 0.45);
     }
   }
 
@@ -430,7 +472,7 @@ export function buildVectorRelief(
     if (loops.length === 0) continue;
     if (prevTop < 0) fgLoops = loops;
 
-    const shapes = loopsToShapes(loops, w, h, cell);
+    const shapes = loopsToShapes(loops, w, h, cell, 0);
     if (shapes.length === 0) continue;
 
     const top = options.baseThick + (r + 1) * options.step + 2 * LAYER_BEVEL;
@@ -444,22 +486,35 @@ export function buildVectorRelief(
     prevTop = top;
   }
 
-  // Titik paling atas (untuk ring gantungan)
-  const topSrc = housingLoops.length ? housingLoops : baseLoops.length ? baseLoops : fgLoops;
-  let topY = Infinity;
-  let topX = 0;
-  for (const loop of topSrc) {
+  // Cari batas atas & bawah di sumbu Z yang selalu presisi CENTER di x = 0
+  const topSrc = baseLoops.length
+    ? { loops: baseLoops, pad: padPx }
+    : { loops: fgLoops, pad: 0 };
+
+  let topZAtCenter = -Infinity;
+  let bottomZAtCenter = Infinity;
+  let minZ = Infinity;
+  let maxZ = -Infinity;
+
+  for (const loop of topSrc.loops) {
     for (const [px, py] of loop) {
-      if (py < topY) {
-        topY = py;
-        topX = px;
+      const x3d = (px - topSrc.pad - w / 2) * cell;
+      const z3d = -((py - topSrc.pad - h / 2) * cell);
+      if (z3d < minZ) minZ = z3d;
+      if (z3d > maxZ) maxZ = z3d;
+      if (Math.abs(x3d) <= 8) {
+        if (z3d > topZAtCenter) topZAtCenter = z3d;
+        if (z3d < bottomZAtCenter) bottomZAtCenter = z3d;
       }
     }
   }
-  const topPos =
-    topY < Infinity
-      ? { x: (topX - w / 2) * cell, z: (topY - h / 2) * cell }
-      : { x: 0, z: (-h / 2) * cell };
+
+  if (topZAtCenter === -Infinity) topZAtCenter = maxZ;
+  if (bottomZAtCenter === Infinity) bottomZAtCenter = minZ;
+
+  // Center strictly at x = 0
+  const topPos = { x: 0, z: topZAtCenter };
+  const bottomPos = { x: 0, z: bottomZAtCenter };
 
   const housingVol = (options.housingHeight ?? 0) > 0 ? totalArea * 1.25 * (options.housingHeight ?? 0) : 0;
   const volume = totalArea * (options.baseThick + options.step) + housingVol;
@@ -472,6 +527,7 @@ export function buildVectorRelief(
     housingColor: options.housingColor ?? options.baseColor,
     housingHeight: options.housingHeight,
     top: topPos,
+    bottom: bottomPos,
     volume,
   };
 }
