@@ -352,10 +352,7 @@ export function ColorSelect({
   // Popup di-portal ke <body> dengan posisi fixed agar tidak terpotong panel
   // yang bisa di-scroll / tertutup footer harga. Membuka ke atas bila ruang bawah sempit.
   useLayoutEffect(() => {
-    if (!open) {
-      setPopStyle(null);
-      return;
-    }
+    if (!open) return;
     const place = () => {
       const tr = triggerRef.current?.getBoundingClientRect();
       if (!tr) return;

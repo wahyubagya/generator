@@ -408,17 +408,15 @@ function Editor({ d, setD, onBack }: { d: Design; setD: (p: Partial<Design>) => 
 
 export default function CharacterClickerGen() {
   const [d, setDState] = useState<Design | null>(null);
-  const [savedDraft, setSavedDraft] = useState<Design | null>(null);
-  const toast = useToast();
-  const setD = (p: Partial<Design>) => setDState((cur) => (cur ? { ...cur, ...p } : cur));
-  const start = (imageUrl: string) => setDState({ ...DEFAULTS, imageUrl });
-
-  useEffect(() => {
-    const draft = loadDraft<Design>("bikin-clicker");
-    if (draft && draft.imageUrl && draft.imageUrl !== "(gambar upload)") {
-      setSavedDraft(draft);
+  const [savedDraft, setSavedDraft] = useState<Design | null>(() => {
+    if (typeof window !== "undefined") {
+      const draft = loadDraft<Design>("bikin-clicker");
+      if (draft && draft.imageUrl && draft.imageUrl !== "(gambar upload)") {
+        return draft;
+      }
     }
-  }, []);
+    return null;
+  });
 
   if (d) return <Editor d={d} setD={setD} onBack={() => setDState(null)} />;
 

@@ -118,19 +118,19 @@ export function clearDraft(slug: string): void {
 
 /** Daftar desain (mode "untuk semua nama"): item pertama jadi acuan. */
 export function useDesigns<T>(initial: T, max = 8, draftSlug?: string) {
-  const [items, setItems] = useState<T[]>([initial]);
+  // Muat draf tersimpan jika masih berlaku (< 1 hari)
+  const [items, setItems] = useState<T[]>(() => {
+    if (typeof window !== "undefined" && draftSlug) {
+      const draft = loadDraft<T[]>(draftSlug);
+      if (draft && Array.isArray(draft) && draft.length > 0) {
+        return draft;
+      }
+    }
+    return [initial];
+  });
   const [sel, setSel] = useState(0);
   const idx = Math.min(sel, items.length - 1);
   const current = items[idx];
-
-  // Muat draf tersimpan jika masih berlaku (< 1 hari)
-  useEffect(() => {
-    if (!draftSlug) return;
-    const draft = loadDraft<T[]>(draftSlug);
-    if (draft && Array.isArray(draft) && draft.length > 0) {
-      setItems(draft);
-    }
-  }, [draftSlug]);
 
   const update = useCallback(
     (patch: Partial<T>) =>
