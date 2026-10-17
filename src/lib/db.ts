@@ -13,14 +13,14 @@ function createPrismaClient(): PrismaClient {
   let resolvedUrl = rawUrl;
   if (rawUrl.startsWith("file:./") || rawUrl.startsWith("file:../")) {
     const relPath = rawUrl.replace(/^file:/, "");
-    resolvedUrl = `file:${path.resolve(process.cwd(), relPath)}`;
+    resolvedUrl = `file:${path.resolve(/*turbopackIgnore: true*/ process.cwd(), relPath)}`;
   } else if (
     !rawUrl.startsWith("file:") &&
     !rawUrl.startsWith("http:") &&
     !rawUrl.startsWith("https:") &&
     !rawUrl.startsWith("libsql:")
   ) {
-    resolvedUrl = `file:${path.resolve(process.cwd(), rawUrl)}`;
+    resolvedUrl = `file:${path.resolve(/*turbopackIgnore: true*/ process.cwd(), rawUrl)}`;
   }
 
   const adapter = new PrismaLibSql({

@@ -417,6 +417,9 @@ export default function CharacterClickerGen() {
     }
     return null;
   });
+  const toast = useToast();
+  const setD = (p: Partial<Design>) => setDState((cur) => (cur ? { ...cur, ...p } : cur));
+  const start = (imageUrl: string) => setDState({ ...DEFAULTS, imageUrl });
 
   if (d) return <Editor d={d} setD={setD} onBack={() => setDState(null)} />;
 
